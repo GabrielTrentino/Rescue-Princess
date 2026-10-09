@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Resgate da Princesa</title>
+  <link rel="stylesheet" href="./src/style.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./lib/three/build/three.module.js",
+        "three/addons/": "./lib/three/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div id="vignette"></div>
+    <div id="markers"></div>
+    <div id="floaters"></div>
+
+    <div id="score">
+      <div class="team blue">
+        <div class="tname">AZUL</div>
+        <div class="tscore" id="scoreBlue">0</div>
+        <div class="pstatus" id="statusBlue">Princesa presa</div>
+      </div>
+      <div class="vs">
+        <div class="goal" id="goalText">Primeiro a 2 resgates</div>
+      </div>
+      <div class="team red">
+        <div class="tname">VERMELHO</div>
+        <div class="tscore" id="scoreRed">0</div>
+        <div class="pstatus" id="statusRed">Princesa presa</div>
+      </div>
+    </div>
+
+    <div id="feed"></div>
+    <canvas id="minimap" width="150" height="380"></canvas>
+
+    <div id="crosshair"><span></span></div>
+    <div id="prompt"></div>
+    <div id="bigmsg"></div>
+
+    <div id="vitals">
+      <div id="className">Cavaleiro</div>
+      <div class="bar hp"><div id="hpFill"></div><span id="hpText">100</span></div>
+      <div class="bar st"><div id="stFill"></div></div>
+      <div id="carry"></div>
+    </div>
+
+    <div id="skills">
+      <div class="skill" id="skLMB"><div class="key">LMB</div><div class="sname"></div><div class="cd"></div></div>
+      <div class="skill" id="skRMB"><div class="key">RMB</div><div class="sname"></div><div class="cd"></div></div>
+      <div class="skill" id="skQ"><div class="key">Q</div><div class="sname"></div><div class="cd"></div></div>
+    </div>
+
+    <div id="scoreboard" class="hidden"></div>
+  </div>
+
+  <!-- Menu -->
+  <div id="menu" class="overlay">
+    <div class="panel wide">
+      <h1>Resgate da Princesa</h1>
+      <p class="sub">Invada o castelo inimigo, resgate a sua princesa e traga-a de volta ao seu trono.
+        Enquanto isso, defenda a princesa inimiga presa na sua masmorra.</p>
+      <h3>Escolha sua classe</h3>
+      <div class="classes" id="menuClasses"></div>
+      <div class="opts">
+        <label>Dificuldade
+          <select id="optDifficulty">
+            <option value="easy">Fácil</option>
+            <option value="normal" selected>Normal</option>
+            <option value="hard">Difícil</option>
+          </select>
+        </label>
+        <label>Jogadores por time
+          <select id="optTeam">
+            <option value="4">4 x 4</option>
+            <option value="6" selected>6 x 6</option>
+            <option value="8">8 x 8</option>
+          </select>
+        </label>
+        <label>Resgates para vencer
+          <select id="optScore">
+            <option value="1">1</option>
+            <option value="2" selected>2</option>
+            <option value="3">3</option>
+            <option value="5">5</option>
+          </select>
+        </label>
+      </div>
+      <button id="btnPlay" class="primary" disabled>Carregando...</button>
+      <div id="loadbar"><div id="loadFill"></div></div>
+      <details class="help">
+        <summary>Controles e regras</summary>
+        <div class="cols">
+          <ul>
+            <li><b>WASD</b> mover · <b>Shift</b> correr · <b>Espaço</b> pular</li>
+            <li><b>Botão esquerdo</b> ataque · <b>Botão direito</b> habilidade secundária</li>
+            <li><b>Q</b> habilidade especial · <b>E</b> pegar / soltar / alimentar</li>
+            <li><b>B</b> trocar de classe (dentro do seu castelo)</li>
+            <li><b>Tab</b> placar · <b>Esc</b> pausar</li>
+          </ul>
+          <ul>
+            <li>Sua princesa está presa na masmorra do castelo inimigo. Pegue-a com <b>E</b> e leve-a até o círculo do trono no seu castelo.</li>
+            <li>Quem carrega a princesa anda mais devagar e não ataca. Se morrer, ela cai no chão.</li>
+            <li>Encoste na princesa inimiga caída para devolvê-la à sua masmorra.</li>
+            <li>Banquetes aparecem pelo mapa. Leve-os à prisioneira no seu castelo para engordá-la: ela fica mais pesada e lenta para o inimigo carregar.</li>
+            <li>Esqueletos guardam acampamentos e atacam os dois times.</li>
+          </ul>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- Class select (respawn / change) -->
+  <div id="classMenu" class="overlay hidden">
+    <div class="panel wide">
+      <h2 id="classMenuTitle">Você caiu!</h2>
+      <p class="sub" id="classMenuSub">Escolha a classe para o próximo renascimento.</p>
+      <div class="classes" id="respawnClasses"></div>
+      <button id="btnClassOk" class="primary">Confirmar</button>
+    </div>
+  </div>
+
+  <div id="pause" class="overlay hidden">
+    <div class="panel">
+      <h2>Pausado</h2>
+      <button id="btnResume" class="primary">Continuar</button>
+      <button id="btnQuit">Voltar ao menu</button>
+    </div>
+  </div>
+
+  <div id="endScreen" class="overlay hidden">
+    <div class="panel">
+      <h1 id="endTitle">Vitória!</h1>
+      <p class="sub" id="endSub"></p>
+      <div id="endStats"></div>
+      <button id="btnAgain" class="primary">Jogar novamente</button>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
