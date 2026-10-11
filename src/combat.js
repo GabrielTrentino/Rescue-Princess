@@ -2,11 +2,11 @@
 // dano com todos os modificadores, cura e mortes.
 import * as THREE from 'three';
 import { cloneModel } from './assets.js';
-import { TEAM, DIFFICULTY, SETTINGS, MERCHANT } from './config.js';
+import { TEAM, DIFFICULTY, SETTINGS, SUMMONER, XP } from './config.js';
 import { heightAt } from './world.js';
 import { sfx } from './audio.js';
 import { skillList, cdOf, soulCost, energyCost, SKILL_BY_ID } from './skills.js';
-import { perkOf, cdMultiplier } from './progression.js';
+import { perkOf, cdMultiplier, addXp } from './progression.js';
 
 const _v = new THREE.Vector3();
 const _w = new THREE.Vector3();
@@ -56,7 +56,11 @@ export class Combat {
     this.shadowMat = new THREE.MeshBasicMaterial({ color: 0x3a1650 });
     this.shadowGlow = new THREE.MeshBasicMaterial({ color: 0x9a5aff, transparent: true, opacity: 0.45, depthWrite: false });
     this.coinMat = new THREE.MeshStandardMaterial({ color: 0xffcf3a, metalness: 0.7, roughness: 0.3, emissive: 0x6a4a00, emissiveIntensity: 0.5 });
+    this.iceMat = new THREE.MeshBasicMaterial({ color: 0xbfefff });
+    this.holyMat = new THREE.MeshBasicMaterial({ color: 0xfff2a0 });
+    this.holyGlow = new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0.45, depthWrite: false });
     this.ballGeo = new THREE.SphereGeometry(0.35, 12, 8);
+    this.lanceGeo = new THREE.ConeGeometry(0.16, 1.3, 6).rotateX(Math.PI / 2);
     this.coinGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.05, 14);
   }
 
@@ -222,7 +226,7 @@ export class Combat {
 
   stun(o, t, knockdown = false) {
     if (!o.alive || o.isStructure) return;
-    if (this.game.time < o.st.knockImmuneUntil) return;
+    if (this.game.time < o.st.knockImmuneUntil || this.game.time < (o.st.cleanseUntil || 0)) return;
     o.st.stunUntil = Math.max(o.st.stunUntil, this.game.time + t);
     o.dash = null; o.blocking = false;
     if (o.channel) this.game.economy.cancelChannel(o, true);
@@ -230,13 +234,13 @@ export class Combat {
     if (o.isPlayer) this.game.hud.status('Atordoado!');
   }
   root(o, t) {
-    if (!o.alive || o.isStructure) return;
+    if (!o.alive || o.isStructure || this.game.time < (o.st.cleanseUntil || 0)) return;
     o.st.rootUntil = Math.max(o.st.rootUntil, this.game.time + t);
     o.dash = null;
     if (o.isPlayer) this.game.hud.status('Preso!');
   }
   slow(o, mul, t) {
-    if (!o.alive || o.isStructure) return;
+    if (!o.alive || o.isStructure || this.game.time < (o.st.cleanseUntil || 0)) return;
     const now = this.game.time;
     if (now < o.st.slowUntil && o.st.slowMul < mul) { o.st.slowUntil = Math.max(o.st.slowUntil, now + t * 0.5); return; }
     o.st.slowMul = mul; o.st.slowUntil = Math.max(o.st.slowUntil, now + t);
@@ -248,6 +252,31 @@ export class Combat {
     this.game.col.resolve(o.pos, o.radius, 0);
     o.pos.y = heightAt(o.pos.x, o.pos.z);
     o.vel.set(0, 0, 0); o.dash = null;
+  }
+
+  /** Purificar: remove efeitos negativos e dá imunidade a eles por alguns segundos. */
+  cleanse(o, immune) {
+    const st = o.st, t = this.game.time;
+    st.stunUntil = st.rootUntil = st.slowUntil = st.markedUntil = 0;
+    st.poison = st.bleed = null;
+    st.cleanseUntil = t + immune;
+    this.fx.sparks(o.chest, 0xbfe8ff, 8, 3);
+  }
+
+  /** Luz em cadeia: salta para o alvo mais próximo (aliado ferido ou inimigo) a até 8 m. */
+  chainLight(src, from, dmg, heal) {
+    let best = null, bd = 8;
+    for (const o of this.game.characters) {
+      if (!o.alive || o === from || o === src || o.isStructure) continue;
+      const ally = o.team === src.team;
+      if (ally && o.hp >= o.maxHp) continue;
+      const d = o.pos.distanceTo(from.pos);
+      if (d < bd) { bd = d; best = o; }
+    }
+    if (!best) return;
+    this.fx.rope(from.chest, best.chest, 0xffe066);
+    if (best.team === src.team) this.heal(best, heal, src);
+    else this.damage(best, dmg, src, { dir: this.dirTo(from, best), knock: 2 });
   }
 
   smokeCloud(pos, r, life) {
@@ -294,10 +323,10 @@ export class Combat {
       ch.playOnce(a.anim, { speed: 2 });
       this.projectile(ch, 'coin', aim.origin, aim.dir, { speed: a.speed, damage: a.damage, range: a.range });
       sfx('coin', this.dist(ch));
-    } else if (a.type === 'shadow') {
+    } else if (a.type === 'holy') {
       ch.playOnce(a.anim, { speed: 1.6 });
-      this.projectile(ch, 'shadow', aim.origin, aim.dir, { speed: a.speed, damage: a.damage, range: a.range });
-      sfx('shadow', this.dist(ch));
+      this.projectile(ch, 'holy', aim.origin, aim.dir, { speed: a.speed, damage: a.damage, heal: a.heal, range: a.range, hitsAllies: true, small: true });
+      sfx('heal', this.dist(ch));
     }
     return true;
   }
@@ -310,15 +339,20 @@ export class Combat {
   }
 
   monsterAttack(ch, aim) {
-    const m = ch.monster;
+    const m = ch.monster, su = ch.summon || {};
     ch.cd.attack = m.cooldown;
     ch.playOnce(m.anim, { speed: 1.3 });
+    const dmg = m.damage * (su.dmgMul || 1) * (this.game.time < ch.st.dmgUpUntil ? 1.3 : 1);
     if (m.kind === 'melee') {
       sfx('swing', this.dist(ch));
-      this.after(0.3, () => this.meleeHit(ch, { damage: m.damage * (ch.summon ? ch.summon.dmgMul || 1 : 1), range: m.range, arc: 1.3, dir: aim.dir }));
+      this.after(0.3, () => this.meleeHit(ch, { damage: dmg, range: m.range, arc: 1.3, dir: aim.dir }));
+    } else if (m.proj === 'arrow') {
+      sfx('bow', this.dist(ch));
+      this.projectile(ch, 'arrow', aim.origin, aim.dir, { speed: 55, damage: dmg, gravity: 4, range: 70, explode: su.explode || null });
     } else {
       sfx('fire', this.dist(ch));
-      this.projectile(ch, 'bolt', aim.origin, aim.dir, { speed: 24, damage: m.damage, range: 60 });
+      const slowHit = su.slowHit;
+      this.projectile(ch, 'bolt', aim.origin, aim.dir, { speed: 24, damage: dmg, range: 60, explode: su.explode || null, onHit: slowHit ? (o) => this.slow(o, 0.7, 2) : null });
     }
     return true;
   }
@@ -331,12 +365,10 @@ export class Combat {
     const sk = skillList(ch).find(s => s.slot === slot);
     if (!sk) return false;
     const perk = perkOf(ch, sk);
-    if (perk === undefined) return 'locked';
     // Muralha: usar de novo encerra
     if (sk.id === 'halb_wall' && ch.isPlanted()) { ch.st.wallUntil = t; ch.st.knockImmuneUntil = t; return true; }
     if (ch.carrying || ch.isStunned() || ch.channel || ch.dash) return false;
     if ((ch.cd[sk.id] || 0) > 0) return false;
-    if (sk.cdAfter && ch.st.veil) return false;
     const souls = soulCost(sk, perk);
     if (souls && ch.souls < souls) return 'nosouls';
     const energy = energyCost(sk, perk);
@@ -345,7 +377,7 @@ export class Combat {
     const r = sk.cast(this, ch, aim, perk);
     if (r === false) return false;
     if (souls) ch.souls -= souls;
-    if (!sk.cdAfter) ch.cd[sk.id] = cdOf(sk, perk) * cdMultiplier(ch, slot);
+    ch.cd[sk.id] = cdOf(sk, perk) * cdMultiplier(ch, slot);
     if (sk.dmg !== '—' && !sk.keepsVeil) ch.breakInvis();
     return true;
   }
@@ -359,46 +391,30 @@ export class Combat {
     ch.cd[sk.id] = cdOf(sk, perk) * cdMultiplier(ch, sk.slot);
   }
 
-  onVeilEnd(ch) {
-    const sk = SKILL_BY_ID.s_veil;
-    ch.cd[sk.id] = cdOf(sk) * cdMultiplier(ch, sk.slot);
-  }
+  onVeilEnd() {}
 
-  /** Troca de modo do Mercador de Almas (tecla '). */
-  switchMode(ch) {
-    if (!ch.isMerchant || !ch.alive || ch.modeCd > 0 || ch.channel) return false;
-    ch.mode = ch.mode === 'merchant' ? 'summoner' : 'merchant';
-    ch.modeCd = MERCHANT.switchCooldown;
-    ch.cd.attack = Math.max(ch.cd.attack, MERCHANT.switchTime);
-    ch.blocking = false;
-    if (ch.model) ch.attachWeapons();
-    sfx('swap', this.dist(ch));
+  /** Marcha do Invocador (botão direito): aliados próximos ganham velocidade. */
+  march(ch) {
+    const g = this.game;
+    if (!ch.alive || (ch.cd.march || 0) > 0 || ch.isStunned()) return false;
+    ch.cd.march = SUMMONER.marchCooldown;
+    for (const o of this.alliesNear(ch, ch.pos.x, ch.pos.z, SUMMONER.marchRadius)) o.st.marchUntil = g.time + SUMMONER.marchDuration;
+    sfx('warcry', this.dist(ch));
+    this.fx.ring(ch.pos, SUMMONER.marchRadius, 0x9a6aff, 0.8);
+    if (ch.isPlayer) g.hud.status(`Marcha! +40% de velocidade por ${SUMMONER.marchDuration} s`);
     return true;
   }
 
-  /** Botão direito do Invocador: Elo de almas (fora da cidade) ou Marcha (dentro). */
-  summonerRmb(ch, held, aim, dt) {
+  /** Elo de almas do Invocador (botão esquerdo segurado): liga num inimigo e gera almas. */
+  soulLink(ch, held, aim, dt) {
     const g = this.game;
-    const inCity = g.world.castles[ch.team].inside(ch.pos.x, ch.pos.z);
-    if (inCity) {
-      this.endLink(ch);
-      if (!held || (ch.cd.march || 0) > 0) return false;
-      if (ch.souls < MERCHANT.marchCost) { if (ch.isPlayer) g.hud.status('Sem almas para a Marcha'); return false; }
-      ch.souls -= MERCHANT.marchCost;
-      ch.cd.march = MERCHANT.marchCooldown;
-      for (const o of this.alliesNear(ch, ch.pos.x, ch.pos.z, MERCHANT.marchRadius)) o.st.marchUntil = g.time + MERCHANT.marchDuration;
-      sfx('warcry', this.dist(ch));
-      this.fx.ring(ch.pos, MERCHANT.marchRadius, 0x9a6aff, 0.8);
-      if (ch.isPlayer) g.announce('Marcha!', 'Aliados próximos ganham +40% de velocidade por 15 s');
-      return 'march';
-    }
-    // elo de almas
     let link = this.links.get(ch);
-    if (!held || !ch.alive || ch.isStunned()) { this.endLink(ch); return false; }
+    if (!held || !ch.alive || ch.isStunned() || ch.carrying) { this.endLink(ch); return false; }
     let tgt = link && link.target;
-    const valid = (o) => o && o.alive && !o.isStructure && hostile(ch, o) && o.pos.distanceTo(ch.pos) <= MERCHANT.soulLinkRange && this.losTo(ch, o);
+    const range = SUMMONER.linkRange;
+    const valid = (o) => o && o.alive && !o.isStructure && hostile(ch, o) && o.pos.distanceTo(ch.pos) <= range && this.losTo(ch, o);
     if (!valid(tgt)) {
-      tgt = aim.target && valid(aim.target) ? aim.target : this.aimEnemy(ch, aim, MERCHANT.soulLinkRange);
+      tgt = aim && aim.target && valid(aim.target) ? aim.target : (aim ? this.aimEnemy(ch, aim, range) : null);
       if (!valid(tgt)) { this.endLink(ch); return false; }
     }
     if (!link) {
@@ -411,8 +427,8 @@ export class Combat {
       sfx('soul', this.dist(ch));
     }
     link.target = tgt;
-    if (!(ch.st.veil && ch.st.veilPerk === 'B')) ch.breakInvis();
-    g.economy.addSouls(ch, MERCHANT.soulLinkRate * dt);
+    ch.breakInvis();
+    g.economy.addSouls(ch, SUMMONER.linkRate * dt);
     const a = new THREE.Vector3(ch.pos.x, ch.pos.y + 1.4, ch.pos.z), b = tgt.chest;
     const p = link.line.geometry.attributes.position;
     p.setXYZ(0, a.x, a.y, a.z); p.setXYZ(1, b.x, b.y, b.z); p.needsUpdate = true;
@@ -516,6 +532,8 @@ export class Combat {
       if (t < st.oathUntil && st.oathPerk === 'B' && !frontal) reduce = Math.max(reduce, 0.3);
       dmg *= 1 - reduce;
       if (t < st.ironUntil) dmg *= 0.75;
+      // armadura (classe + capacete + peitoral)
+      dmg *= 1 - target.damageReduction();
       if (t < st.guardUntil) dmg *= 0.5;
       if (blocked) {
         sfx('block', this.dist(target));
@@ -573,6 +591,11 @@ export class Combat {
     const before = target.hp;
     target.hp = Math.min(target.maxHp, target.hp + amount);
     this.game.effects.heal(target.pos);
+    const healed = target.hp - before;
+    if (source && source !== target && source.classKey === 'priest' && healed > 0 && !target.isMonster) {
+      source._healXp = (source._healXp || 0) + healed * XP.healPer;
+      if (source._healXp >= 10) { const n = Math.floor(source._healXp); source._healXp -= n; addXp(source, n, 'cura'); }
+    }
     if (source && source.isPlayer && target.hp > before) this.game.hud.healMarker(target, Math.round(target.hp - before));
   }
 
@@ -623,7 +646,7 @@ export class Combat {
     return best;
   }
 
-  projectile(ch, kind, origin, dir, { speed = 30, damage = 10, gravity = 0, range = 60, splash = 0, pierce = 1, homing = null, prey = false, patience = false, explode = null, onHit = null, spin = false, trail = false } = {}) {
+  projectile(ch, kind, origin, dir, { speed = 30, damage = 10, gravity = 0, range = 60, splash = 0, pierce = 1, homing = null, prey = false, patience = false, explode = null, onHit = null, spin = false, trail = false, heal = 0, hitsAllies = false, small = false } = {}) {
     let mesh;
     if (kind === 'arrow') { mesh = cloneModel('arrow_bow'); mesh.scale.setScalar(1.1); }
     else if (kind === 'dagger') { mesh = new THREE.Group(); const d = cloneModel('dagger'); d.rotation.x = Math.PI / 2; d.scale.setScalar(1.2); mesh.add(d); }
@@ -634,6 +657,15 @@ export class Combat {
       mesh.add(new THREE.Mesh(this.ballGeo, this.fireballMat));
       const glow = new THREE.Mesh(this.ballGeo, this.fireGlowMat); glow.scale.setScalar(1.8); mesh.add(glow);
       mesh.add(new THREE.PointLight(0xff8a2a, 15, 10, 2));
+    } else if (kind === 'ice') {
+      mesh = new THREE.Group();
+      mesh.add(new THREE.Mesh(this.lanceGeo, this.iceMat));
+      mesh.add(new THREE.PointLight(0x9fe6ff, 8, 7, 2));
+    } else if (kind === 'holy') {
+      mesh = new THREE.Group();
+      const c = new THREE.Mesh(this.ballGeo, this.holyMat); c.scale.setScalar(small ? 0.55 : 0.8); mesh.add(c);
+      const glow = new THREE.Mesh(this.ballGeo, this.holyGlow); glow.scale.setScalar(small ? 1.1 : 1.7); mesh.add(glow);
+      if (!small) mesh.add(new THREE.PointLight(0xffe066, 10, 8, 2));
     } else if (kind === 'shadow') {
       mesh = new THREE.Group();
       const c = new THREE.Mesh(this.ballGeo, this.shadowMat); c.scale.setScalar(0.7); mesh.add(c);
@@ -646,7 +678,7 @@ export class Combat {
     const p = {
       mesh, pos: origin.clone(), vel: dir.clone().normalize().multiplyScalar(speed), speed, gravity: homing ? 0 : gravity, damage, splash,
       owner: ch, team: ch.team, kind, radius: kind === 'arrow' ? 0.25 : 0.4, life: range / speed, pierce, hit: new Set(),
-      homing, prey, patience, explode, onHit, spin, trail,
+      homing, prey, patience, explode, onHit, spin, trail, heal, hitsAllies,
     };
     p.mesh.position.copy(p.pos);
     this.game.scene.add(p.mesh);
@@ -756,12 +788,6 @@ export class Combat {
           }
         }
       }
-      // fim da ressurreição
-      if (st.resUntil && t >= st.resUntil) {
-        st.resUntil = 0;
-        c.resurrectEnd = true;
-        this.kill(c, null, { silent: true });
-      }
     }
   }
 
@@ -803,7 +829,8 @@ export class Combat {
       next.copy(p.pos).addScaledVector(p.vel, dt);
       let hitT = 2, hitChar = null;
       for (const o of this.targets()) {
-        if (!o.alive || o === p.owner || o.team === p.team || p.hit.has(o)) continue;
+        if (!o.alive || o === p.owner || p.hit.has(o)) continue;
+        if (o.team === p.team && !(p.hitsAllies && !o.isStructure && o.hp < o.maxHp)) continue;
         const h = o.isStructure ? 6 : 2.1;
         a.set(o.pos.x, o.pos.y + 0.4, o.pos.z); b.set(o.pos.x, o.pos.y + h, o.pos.z);
         const r = o.radius + p.radius;
@@ -838,7 +865,7 @@ export class Combat {
       }
       p.pos.copy(next);
       p.mesh.position.copy(p.pos);
-      if (p.kind === 'arrow' || p.kind === 'dagger') p.mesh.lookAt(_v.copy(p.pos).add(p.vel));
+      if (p.kind === 'arrow' || p.kind === 'dagger' || p.kind === 'ice') p.mesh.lookAt(_v.copy(p.pos).add(p.vel));
       else if (p.kind === 'axe') { p.mesh.lookAt(_v.copy(p.pos).add(p.vel)); p.mesh.rotateX(g.time * 25); }
       else if (p.kind === 'coin') { p.mesh.rotation.x += dt * 20; p.mesh.rotation.z += dt * 7; }
       if (p.trail && Math.random() < 0.5) this.fx.sparks(p.pos, 0xfff2c0, 1, 0.5);
@@ -861,6 +888,14 @@ export class Combat {
       return;
     }
     if (p.kind === 'bolt') g.effects.explosion(at, 1.2, 0xb46bff);
+    if (p.kind === 'ice') g.effects.sparks(at, 0xbff0ff, 8, 4);
+    if (p.kind === 'holy') g.effects.sparks(at, 0xffe066, 6, 3);
+    // luz sagrada em aliado: cura
+    if (target && p.hitsAllies && target.team === p.team) {
+      this.heal(target, p.heal, p.owner);
+      if (p.onHit && p.owner.alive) p.onHit(target, at);
+      return;
+    }
     if (p.kind === 'shadow') g.effects.explosion(at, 1.0, 0x7a3aff);
     if (p.explode) {
       g.effects.explosion(at, p.explode.radius, 0xffa040);
@@ -872,7 +907,9 @@ export class Combat {
     if (target) {
       const dir = p.vel.clone().setY(0).normalize();
       const head = p.kind === 'arrow' && !target.isStructure && at.y > target.pos.y + 1.75;
-      let dmg = p.damage * (head ? 1.5 : 1);
+      // o capacete reduz o bônus do tiro na cabeça (1,5× sem capacete; até 1,15× com capacete forte)
+      const headMul = head ? Math.max(1.15, 1.5 - (target.helmetArmor ? target.helmetArmor() : 0) / 100) : 1;
+      let dmg = p.damage * headMul;
       if (p.patience && Math.hypot(target.vel.x, target.vel.z) < 0.6) dmg *= 1.5;
       this.damage(target, dmg, p.owner, { dir, knock: p.kind === 'axe' ? 6 : 3, crit: head });
       if (p.prey && target.alive) { target.st.markedUntil = g.time + 4; target.st.markedTeam = p.team; }

@@ -94,10 +94,10 @@ function renderClasses(container, selected, onPick) {
 }
 addEventListener('keydown', (e) => {
   const n = parseInt(e.key, 10);
-  if (n >= 1 && n <= 8) {
-    const key = CLASS_KEYS[n - 1];
+  if (!Number.isNaN(n)) {
+    const key = CLASS_KEYS.find(k => CLASSES[k].hotkey === n);
     const vis = !$('classMenu').classList.contains('hidden') ? $('respawnClasses') : !$('menu').classList.contains('hidden') ? $('menuClasses') : null;
-    if (vis) vis.querySelector(`[data-key="${key}"]`)?.click();
+    if (key && vis) vis.querySelector(`[data-key="${key}"]`)?.click();
   }
 });
 

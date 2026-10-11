@@ -116,8 +116,14 @@ export class PlayerController {
       this.parts.main = add('sword_A', 0.55, -0.64, -1.1, -0.5, 0.5, -0.38, 0.42);
       steelify(this.parts.main);
     } else if (key === 'merchant') {
-      if (ch.mode === 'summoner') this.parts.main = add('spellbook_open', 0.32, -0.42, -0.9, -0.5, -0.25, 0, 0.42);
-      else this.parts.main = add('hammer_B', 0.6, -0.62, -1.05, -0.45, 0.4, -0.3, 0.38);
+      this.parts.main = add('hammer_B', 0.6, -0.62, -1.05, -0.45, 0.4, -0.3, 0.38);
+    } else if (key === 'summoner') {
+      this.parts.main = add('staff_B', 0.6, -1.15, -1.25, -0.12, 0.6, -0.1, 0.5);
+      this.parts.off = add('spellbook_open', -0.42, -0.45, -0.9, -0.5, 0.35, 0, 0.36);
+    } else if (key === 'priest') {
+      this.parts.main = add('staff', 0.62, -1.2, -1.25, -0.12, 0.6, -0.1, 0.5);
+      this.parts.off = add('shield_badge_color', -0.62, -0.6, -1.15, 0.05, Math.PI + 0.45, 0.08, 0.45);
+      this.parts.main.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.emissive = new THREE.Color(0xffe066); o.material.emissiveIntensity = 0.25; } });
     }
     this.parts.food = add('plate_food_A', -0.42, -0.55, -0.95, 0.35, 0, 0, 0.32);
     this.parts.food.visible = false;
@@ -127,7 +133,6 @@ export class PlayerController {
       this.parts.main.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.emissive = new THREE.Color(r.color); o.material.emissiveIntensity = 0.35; } });
     }
     this._inv = false;
-    this._vmMode = ch.mode;
     this._vmWeapon = ch.weapon;
     vm.visible = true;
   }
@@ -157,7 +162,7 @@ export class PlayerController {
       ch.pitch = Math.max(-1.45, Math.min(1.45, ch.pitch));
     }
     this.mdx = this.mdy = 0;
-    if (this._vmMode !== ch.mode || this._vmWeapon !== ch.weapon) this.buildViewmodel();
+    if (this._vmWeapon !== ch.weapon) this.buildViewmodel();
 
     const fwd = new THREE.Vector3(Math.sin(ch.yaw), 0, Math.cos(ch.yaw));
     const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
@@ -190,7 +195,11 @@ export class PlayerController {
       const a = ch.attackDef();
       const canUse = !menuOpen && !ch.channel;
       // ataque base
-      if (canUse) {
+      if (a.type === 'link') {
+        // Invocador: segurar o botão esquerdo liga o Elo de almas num inimigo
+        const r = canUse ? C.soulLink(ch, this.mouse.left, this.aim(look), dt) : C.soulLink(ch, false, null, dt);
+        this.linking = r === 'link';
+      } else if (canUse) {
         if (a.type === 'arrow') {
           if (this.mouse.left && ch.cd.attack <= 0 && !ch.carrying && !ch.isStunned()) this.charge = Math.min(1, (this.charge || 0) + dt / a.chargeTime);
           if (this.mouse.leftReleased) {
@@ -205,11 +214,8 @@ export class PlayerController {
       const rmb = ch.cls.rmb;
       this.zoomed = false;
       if (rmb === 'zoom') this.zoomed = this.mouse.right && canUse;
-      else if (rmb === 'modes' && ch.mode === 'summoner') {
-        const r = canUse ? C.summonerRmb(ch, this.mouse.right, this.aim(look), dt) : C.summonerRmb(ch, false, null, dt);
-        if (r === 'march') this.mouse.right = false;
-      } else C.block(ch, this.mouse.right && canUse);
-      if (rmb === 'modes' && ch.mode !== 'summoner') C.endLink(ch);
+      else if (rmb === 'march') { if (this.mouse.rightPressed && canUse && !C.march(ch) && (ch.cd.march || 0) > 0) g.hud.status(`Marcha: ${Math.ceil(ch.cd.march)} s`); }
+      else C.block(ch, this.mouse.right && canUse);
 
       // skills 1-5
       if (canUse) {
@@ -217,10 +223,6 @@ export class PlayerController {
           if (!this.pressed['Digit' + s] && !this.pressed['Numpad' + s]) continue;
           this.trySkill(s, look, wx, wz);
         }
-      }
-      // troca de modo do Mercador
-      if (!menuOpen && ch.isMerchant && (this.pressed.Backquote || this.pressed.Quote || this.pressed.KeyQ)) {
-        if (C.switchMode(ch)) { this.buildViewmodel(); g.hud.status(ch.mode === 'summoner' ? 'Modo Invocador' : 'Modo Mercador'); }
       }
       if (!menuOpen && this.pressed.KeyE) this.interact();
       if (!menuOpen && this.pressed.KeyB) g.openClassMenu(true);
@@ -264,12 +266,11 @@ export class PlayerController {
     if (r === true) {
       const kind = sk && (sk.id.includes('whirl') || sk.id.includes('spin')) ? 'spin' : sk && /dash|charge|lunge|leap|blink/.test(sk.id) ? 'dash' : sk && /kick/.test(sk.id) ? 'kick' : sk && /thrust|hook|throw|knife/.test(sk.id) ? 'thrust' : 'cast';
       this.swing(kind, 0.4);
-    } else if (r === 'locked') {
-      g.hud.status(`${sk ? sk.name : 'Skill'} bloqueada · aperte K para escolher`);
     } else if (r === 'nosouls') g.hud.status('Almas insuficientes');
     else if (r === 'noenergy') g.hud.status('Energia insuficiente');
     else if (r && r.menu) {
-      if (r.menu === 'works' && !g.world.castles[ch.team].inside(ch.pos.x, ch.pos.z)) { g.hud.status('Obras só dentro da cidade'); return; }
+      if (r.menu === 'works' && !g.world.castles[ch.team].inside(ch.pos.x, ch.pos.z)) { g.hud.status('Obras e Oficina só dentro da cidade'); return; }
+      if (r.menu === 'revive' && !g.characters.some(o => !o.alive && o.team === ch.team && !o.isMonster && o !== ch)) { g.hud.status('Nenhum aliado morto'); return; }
       if (r.menu === 'stall') {
         if (!g.economy.nearStall(ch)) g.combat.commitSkill(ch, r.skill); // à distância: paga energia e recarga
       }

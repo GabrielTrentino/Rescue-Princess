@@ -50,6 +50,8 @@ function mulberry32(a) {
 // pontos de moedas e túmulos (referencial azul; o lado vermelho é espelhado)
 const COIN_SPOTS = [[0, -112], [-48, -118], [48, -118], [-24, -56], [24, -56], [0, -42], [-58, -20], [58, -22]];
 const TOMB_SPOTS = [[-36, -48, 0.4], [56, -126, -0.5]];
+// veios de minério (o Mercador minera com E)
+const VEIN_SPOTS = [[-40, -128], [38, -138], [-60, -64], [60, -62], [12, -88]];
 
 // estradas (polilinhas no mundo) — usadas para pintar o chão e evitar árvores
 const ROADS = [
@@ -91,6 +93,7 @@ export class World {
     this.coinSpawns = [];
     this.chestSpawns = [];
     this.tombSpawns = [];
+    this.veinSpawns = [];
     this.nav = new NavGraph(collision);
     this.time = 0;
   }
@@ -432,6 +435,7 @@ export class World {
       }
       // moedas nas rotas, túmulos (almas) e baús
       for (const [x, z] of COIN_SPOTS) { const q = this.tp(team, x, z); this.coinSpawns.push({ x: q.x, z: q.z }); }
+      for (const [x, z] of VEIN_SPOTS) { const q = this.tp(team, x, z); this.veinSpawns.push({ x: q.x, z: q.z }); }
       for (const [x, z, ry] of TOMB_SPOTS) { const q = this.tp(team, x, z); this.tombSpawns.push({ x: q.x, z: q.z, ry: ry + (team === TEAM.RED ? Math.PI : 0) }); }
     }
     // placas de pedra sob a comida: marcadores
@@ -454,7 +458,7 @@ export class World {
       if (Math.abs(x) < 44 && Math.abs(z) > 136) return false; // castelos
       if (Math.abs(Math.abs(x) - 60) < 8 && Math.abs(z) > 140) return false; // vilarejos
       for (const [cx, cz, r] of [[-62, 35, 14], [62, -35, 14], [20, 27, 12], [-20, -27, 12], [30, 100, 5], [-30, -100, 5], [16, 24, 6], [-16, -24, 6],
-        ...TOMB_SPOTS.flatMap(([x, z]) => [[x, z, 4], [-x, -z, 4]]), ...COIN_SPOTS.flatMap(([x, z]) => [[x, z, 2], [-x, -z, 2]])]) {
+        ...TOMB_SPOTS.flatMap(([x, z]) => [[x, z, 4], [-x, -z, 4]]), ...VEIN_SPOTS.flatMap(([x, z]) => [[x, z, 3.5], [-x, -z, 3.5]]), ...COIN_SPOTS.flatMap(([x, z]) => [[x, z, 2], [-x, -z, 2]])]) {
         if (Math.hypot(x - cx, z - cz) < r + margin) return false;
       }
       for (const o of occupied) if (Math.hypot(x - o[0], z - o[1]) < o[2] + margin) return false;

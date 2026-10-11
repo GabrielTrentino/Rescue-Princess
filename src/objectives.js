@@ -7,7 +7,7 @@ import { sfx } from './audio.js';
 import { addXp } from './progression.js';
 import { XP } from './config.js';
 
-/** Ladino e Mercador de Almas não podem pegar a princesa. */
+/** Ladino, Mercador e Invocador não podem pegar a princesa. */
 export function canCarry(ch) { return !!(ch && ch.cls && ch.cls.canCarry !== false && !ch.isMonster); }
 
 const PRINCESS_TINT = [0xd9c8ff, 0xffc4dc];

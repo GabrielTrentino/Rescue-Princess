@@ -1,12 +1,12 @@
 // HUD: placar, vida, XP, ouro, energia e almas, barra de skills, efeitos ativos, minimapa, marcadores,
 // mensagens e números de dano.
 import * as THREE from 'three';
-import { TEAM, TEAM_NAME, CLASSES, MAX_FAT, MERCHANT, RARITY } from './config.js';
+import { TEAM, TEAM_NAME, CLASSES, MAX_FAT, MERCHANT, SUMMONER, RARITY, armorReduction } from './config.js';
 import { BOUNDS } from './world.js';
 import { skillList, cdOf, soulCost, energyCost } from './skills.js';
-import { perkOf, rankOf, isUnlocked, pointsFree, hasPending, xpToNext, cdMultiplier } from './progression.js';
-import { SLOT_LEVEL } from './config.js';
+import { perkOf, rankOf, pointsFree, hasPending, xpToNext, cdMultiplier } from './progression.js';
 import { weaponLabel } from './economy.js';
+import { skillIcon } from './menus.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -128,30 +128,35 @@ export class HUD {
     const ch = this.game.player;
     const c = CLASSES[ch.classKey];
     const a = ch.attackDef();
-    const rmbName = c.rmb === 'zoom' ? 'Mirar' : c.rmb === 'modes' && ch.mode === 'summoner' ? 'Elo / Marcha' : 'Bloquear';
-    let html = `<div class="skill base" id="skLMB"><div class="key">LMB</div><div class="sname">${a.name}</div><div class="cd"></div></div>`;
-    html += `<div class="skill base" id="skRMB"><div class="key">RMB</div><div class="sname">${rmbName}</div><div class="cd"></div></div>`;
+    const rmb = c.rmb === 'zoom' ? ['🔭', 'Mirar'] : c.rmb === 'march' ? ['🥁', 'Marcha'] : ['🛡️', 'Bloquear'];
+    let html = `<div class="skill base" id="skLMB"><div class="key">LMB</div><span class="sicon c-${ch.classKey}">${a.icon || '⚔️'}</span><div class="sname">${a.name}</div><div class="cd"></div></div>`;
+    html += `<div class="skill base" id="skRMB"><div class="key">RMB</div><span class="sicon c-${ch.classKey}">${rmb[0]}</span><div class="sname">${rmb[1]}</div><div class="cd"></div><div class="cdt"></div></div>`;
     for (const sk of skillList(ch)) {
-      html += `<div class="skill" id="sk${sk.slot}"><div class="key">${sk.slot}</div><div class="sname">${sk.name}</div><div class="badge"></div><div class="cd"></div><div class="cdt"></div></div>`;
+      html += `<div class="skill" id="sk${sk.slot}"><div class="key">${sk.slot}</div>${skillIcon(sk, ch.classKey)}<div class="sname">${sk.name}</div><div class="badge"></div><div class="cd"></div><div class="cdt"></div></div>`;
     }
-    if (ch.isMerchant) html += `<div class="skill mode" id="skMode"><div class="key">' / Q</div><div class="sname">${ch.mode === 'summoner' ? '💀 Invocador' : '💰 Mercador'}</div><div class="cd"></div></div>`;
     this.el.skills.innerHTML = html;
   }
 
   updateSkillBar() {
     const g = this.game, ch = g.player;
-    const key = ch.classKey + ch.mode + ch.level + JSON.stringify(ch.builds[ch.classKey] || {});
+    const key = ch.classKey + ch.level + JSON.stringify(ch.builds[ch.classKey] || {});
     if (key !== this.skillKey) { this.skillKey = key; this.buildSkillBar(); }
     const a = ch.attackDef();
     const lmb = $('skLMB');
-    if (lmb) lmb.querySelector('.cd').style.height = Math.min(100, ch.cd.attack / (a.cooldown / ch.attackSpeed()) * 100) + '%';
+    if (lmb) {
+      lmb.querySelector('.cd').style.height = a.cooldown ? Math.min(100, ch.cd.attack / (a.cooldown / ch.attackSpeed()) * 100) + '%' : '0%';
+      lmb.classList.toggle('active', !!(g.pc.linking));
+    }
     const rmb = $('skRMB');
-    if (rmb && ch.isMerchant && ch.mode === 'summoner') rmb.querySelector('.cd').style.height = Math.min(100, (ch.cd.march || 0) / MERCHANT.marchCooldown * 100) + '%';
+    if (rmb && ch.cls.rmb === 'march') {
+      rmb.querySelector('.cd').style.height = Math.min(100, (ch.cd.march || 0) / SUMMONER.marchCooldown * 100) + '%';
+      rmb.querySelector('.cdt').textContent = (ch.cd.march || 0) > 0 ? Math.ceil(ch.cd.march) : '';
+    }
     for (const sk of skillList(ch)) {
       const el = $('sk' + sk.slot);
       if (!el) continue;
       const perk = perkOf(ch, sk);
-      const locked = perk === undefined;
+      const locked = false;
       const cdv = ch.cd[sk.id] || 0;
       const full = cdOf(sk, perk) * cdMultiplier(ch, sk.slot);
       el.classList.toggle('locked', locked);
@@ -163,11 +168,8 @@ export class HUD {
       el.querySelector('.cd').style.height = locked ? '0%' : Math.min(100, cdv / (full || 1) * 100) + '%';
       el.querySelector('.cdt').textContent = !locked && cdv > 0 ? Math.ceil(cdv) : '';
       const b = el.querySelector('.badge');
-      if (locked) b.textContent = isUnlocked(ch, sk.slot) ? 'perk?' : `🔒${SLOT_LEVEL[sk.slot]}`;
-      else b.textContent = perk + (rankOf(ch, sk.slot) >= 2 ? ' II' : '') + (souls ? ` · ${souls}💀` : '') + (energy ? ` · ${energy}⚡` : '');
+      b.textContent = (perk || '·') + (rankOf(ch, sk.slot) >= 2 ? ' II' : '') + (souls ? ` · ${souls}💀` : '') + (energy ? ` · ${energy}⚡` : '');
     }
-    const mode = $('skMode');
-    if (mode) mode.querySelector('.cd').style.height = Math.min(100, ch.modeCd / MERCHANT.switchCooldown * 100) + '%';
   }
 
   buffList(ch) {
@@ -193,10 +195,9 @@ export class HUD {
     add(t < st.parryUntil, '⚔️', 'Aparando', st.parryUntil);
     add(t < st.wallUntil, '🔱', 'Muralha', st.wallUntil);
     add(t < st.marchUntil, '🥁', 'Marcha', st.marchUntil);
-    add(st.veil && ch.isInvisible(), '👻', 'Véu', 0);
-    add(!st.veil && ch.isInvisible(), '💨', 'Invisível', st.invisUntil);
-    add(t < st.resUntil, '✨', 'Ressuscitado', st.resUntil);
-    add(t < st.resBonusUntil, '✨', '+20% vel. ataque', st.resBonusUntil);
+    add(ch.isInvisible(), '💨', 'Invisível', st.invisUntil);
+    add(t < (st.cleanseUntil || 0), '💧', 'Purificado', st.cleanseUntil);
+    add(t < st.speedUntil && !ch.isInvisible(), '🪶', 'Veloz', st.speedUntil);
     add(t < st.axeOutUntil, '🪓', 'Machado no ar', st.axeOutUntil);
     return out.join('');
   }
@@ -238,20 +239,28 @@ export class HUD {
     const free = pointsFree(ch), pend = hasPending(ch);
     this.el.points.textContent = pend ? `[K] ${free ? free + ' ponto' + (free > 1 ? 's' : '') : 'escolher perk'}` : '';
     this.el.points.classList.toggle('show', pend);
-    this.el.weapon.innerHTML = ch.weapon ? `<span style="color:${RARITY[ch.weapon.rarity].css}">${weaponLabel(ch.weapon)}</span> · [I] mochila ${ch.backpack.length}/${ch.backpackSize}` : `Arma básica · [I] mochila ${ch.backpack.length}/${ch.backpackSize}`;
+    const piece = (it, empty) => it ? `<span style="color:${RARITY[it.rarity].css}">${weaponLabel(it)}</span>` : empty;
+    const armor = ch.armorValue();
+    this.el.weapon.innerHTML = `${piece(ch.weapon, 'Arma básica')} · ${piece(ch.helmet, '⛑️ básico')} · ${piece(ch.body, '🦺 básico')}<br>🛡️ Armadura ${armor} (−${Math.round(armorReduction(armor) * 100)}% de dano) · [I] mochila ${ch.backpack.length}/${ch.backpackSize}`;
 
-    // Mercador de Almas
-    this.el.merchant.classList.toggle('hidden', !ch.isMerchant);
+    // Mercador e Invocador
+    this.el.merchant.classList.toggle('hidden', !ch.isMerchant && !ch.isSummoner);
+    this.el.enFill.parentElement.classList.toggle('hidden', !ch.isMerchant);
+    this.el.souls.classList.toggle('hidden', !ch.isSummoner);
     if (ch.isMerchant) {
-      this.el.mode.textContent = ch.mode === 'summoner' ? '💀 Modo Invocador' : '💰 Modo Mercador';
+      this.el.mode.textContent = `💰 Mercador · ⛏️ ${ch.ore} minério`;
       this.el.enFill.style.width = (ch.energy / MERCHANT.energyMax * 100) + '%';
       this.el.enText.textContent = `⚡ ${Math.floor(ch.energy)} / ${MERCHANT.energyMax}`;
-      const s = Math.floor(ch.souls);
-      let pips = '';
-      for (let i = 0; i < MERCHANT.soulsMax; i++) pips += `<i class="${i < s ? 'on' : ''}"></i>`;
-      this.el.souls.innerHTML = pips + `<span>${s} almas</span>`;
       const b = E.building[ch.team];
       this.el.vault.textContent = `Cofre 🪙 ${Math.floor(E.vault[ch.team])}` + (b ? ` · Obra: ${Math.ceil(Math.max(0, b.doneAt - g.time))}s` : '');
+    } else if (ch.isSummoner) {
+      const n = (k) => g.summonsOf(ch, k).length;
+      this.el.mode.textContent = `💀 Invocações: 💀${n('minion')} ☠️${n('warrior')} 🦴${n('archer')} 🪄${n('mage')}`;
+      const s = Math.floor(ch.souls);
+      let pips = '';
+      for (let i = 0; i < SUMMONER.soulsMax; i++) pips += `<i class="${i < s ? 'on' : ''}"></i>`;
+      this.el.souls.innerHTML = pips + `<span>${s}</span>`;
+      this.el.vault.textContent = g.pc.linking ? '🔗 Elo ativo: gerando almas' : 'Segure LMB num inimigo para gerar almas';
     }
     // canalização
     const chn = ch.channel;
@@ -259,9 +268,28 @@ export class HUD {
     if (chn) {
       const k = Math.min(1, (g.time - chn.start) / chn.dur);
       this.el.chFill.style.width = (k * 100) + '%';
-      this.el.chText.textContent = (chn.kind === 'craft' ? 'Fabricando' : 'Aprimorando') + ` · ${Math.max(0, chn.until - g.time).toFixed(1)} s (andar cancela)`;
+      this.el.chText.textContent = ({ craft: 'Fabricando', upgrade: 'Aprimorando', mine: 'Minerando' }[chn.kind] || '') + ` · ${Math.max(0, chn.until - g.time).toFixed(1)} s (andar cancela)`;
     }
     this.el.buffs.innerHTML = ch.alive ? this.buffList(ch) : '';
+    // mira: vermelha sobre inimigo, azul sobre aliado
+    if (g.time > (this._aimAt || 0)) {
+      this._aimAt = g.time + 0.08;
+      let kind = '';
+      if (ch.alive) {
+        const look = { origin: cam.position, dir: cam.getWorldDirection(new THREE.Vector3()) };
+        let best = null, bestA = 0.06;
+        for (const o of g.characters) {
+          if (!o.alive || o === ch || o.pos.distanceTo(ch.pos) > 45) continue;
+          if (o.isInvisible() && o.team !== ch.team) continue;
+          const to = new THREE.Vector3(o.pos.x, o.pos.y + 1.3, o.pos.z).sub(look.origin);
+          const a = to.normalize().angleTo(look.dir);
+          if (a < bestA) { bestA = a; best = o; }
+        }
+        if (best) kind = best.team === ch.team ? 'ally' : 'enemy';
+      }
+      this.el.crosshair.classList.toggle('enemy', kind === 'enemy');
+      this.el.crosshair.classList.toggle('ally', kind === 'ally');
+    }
     this.updateSkillBar();
 
     let carry = '';
@@ -374,10 +402,11 @@ export class HUD {
     for (const c of E.coins) if (c.active) dot(c.pos.x, c.pos.z, '#ffe27a', 1.4);
     for (const c of E.chests) if (c.active) sq(c.pos.x, c.pos.z, '#ffcf3a', 2.4);
     for (const it of E.ground) if (it.pos.distanceTo(pl.pos) < 60) dot(it.pos.x, it.pos.z, it.kind === 'gold' ? '#ffe27a' : RARITY[it.item.rarity].css, 1.8);
-    if (pl.isMerchant) {
+    if (pl.isSummoner) {
       for (const tb of E.tombs) sq(tb.pos.x, tb.pos.z, g.time >= tb.readyAt ? '#b48aff' : '#6a5a8a', 2);
-      for (const s of E.souls) if (s.owner === pl) dot(s.pos.x, s.pos.z, '#d8c0ff', 1.8);
+      for (const s of E.souls) dot(s.pos.x, s.pos.z, '#d8c0ff', 1.6 + s.value * 0.4);
     }
+    if (pl.isMerchant) for (const v of E.veins) sq(v.pos.x, v.pos.z, v.active ? '#6ee6ff' : '#3a5a66', 2);
     const st = E.stalls[pl.team].pos;
     sq(st.x, st.z, '#ffd25a', 2.2);
     for (const tw of g.structures) if (tw.alive) sq(tw.pos.x, tw.pos.z, tw.team === 0 ? '#4a8cff' : '#ff5050', 2.4);

@@ -1,13 +1,31 @@
 // Personagens: jogador, bots, monstros e invocações. Modelo animado, atributos, status, movimento e estado.
 import * as THREE from 'three';
 import { Assets, cloneModel, uniqueMaterials, steelify } from './assets.js';
-import { CLASSES, MONSTERS, TEAM, TEAM_HEX, TEAM_TINT, CHAR_RADIUS, MAX_FAT, RARITY, ATTRS } from './config.js';
+import { CLASSES, MONSTERS, TEAM, TEAM_HEX, TEAM_TINT, TEAM_GLOW, CHAR_RADIUS, MAX_FAT, RARITY, ATTRS, ARMOR, armorReduction } from './config.js';
 import { heightAt, inWater, BOUNDS } from './world.js';
 
-const markerGeo = new THREE.OctahedronGeometry(0.22, 0);
+const markerGeo = new THREE.OctahedronGeometry(0.34, 0);
+const ringGeo = new THREE.RingGeometry(0.62, 0.86, 28).rotateX(-Math.PI / 2);
 const barGeo = new THREE.PlaneGeometry(1, 1);
 
 let NEXT_ID = 1;
+
+/** Plaquinha com o nome, na cor do time. */
+function nameSprite(text, team) {
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64;
+  const c = cv.getContext('2d');
+  c.font = 'bold 30px Segoe UI, sans-serif';
+  const w = Math.min(250, c.measureText(text).width + 24);
+  c.fillStyle = team === TEAM.BLUE ? 'rgba(20,50,130,0.78)' : 'rgba(130,20,15,0.78)';
+  c.beginPath(); c.roundRect((256 - w) / 2, 10, w, 44, 10); c.fill();
+  c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText(text, 128, 33);
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false, depthTest: false, transparent: true }));
+  sp.renderOrder = 6;
+  sp.scale.set(1.9, 0.48, 1);
+  return sp;
+}
 
 export function freshStatus() {
   return {
@@ -83,10 +101,11 @@ export class Character {
     this.level = 1; this.xp = 0; this.builds = {};
     this.gold = 0;
     this.weapon = null; // null = arma básica
+    this.helmet = null; this.body = null; // capacete e peitoral (null = peças básicas)
     this.backpack = [];
-    // Mercador de Almas
+    // Mercador e Invocador
     this.mode = 'merchant';
-    this.energy = 30; this.souls = 0;
+    this.energy = 30; this.ore = 2; this.souls = 0;
     this.modeCd = 0;
     if (monsterType) {
       this.monster = MONSTERS[monsterType];
@@ -102,6 +121,7 @@ export class Character {
   get eyeY() { return this.pos.y + 2.05; }
   get chest() { return new THREE.Vector3(this.pos.x, this.pos.y + 1.3, this.pos.z); }
   get isMerchant() { return this.classKey === 'merchant'; }
+  get isSummoner() { return this.classKey === 'summoner'; }
   get backpackSize() { return this.cls ? this.cls.backpack : 0; }
 
   setClass(key) {
@@ -113,25 +133,30 @@ export class Character {
       this.weapon = null;
     }
     while (this.backpack.length > CLASSES[key].backpack) this.backpack.pop();
-    this.mode = 'merchant';
     this.recalcStats();
     if (!this.alive) this.hp = this.maxHp;
     for (const k in this.cd) this.cd[k] = 0;
     if (!this.isPlayer && this.game.scene) this.buildModel();
   }
 
-  attackDef() {
-    const c = this.cls;
-    if (this.isMerchant && this.mode === 'summoner') return c.attackSummoner;
-    return c.attack;
-  }
+  attackDef() { return this.cls.attack; }
 
   // ------------------------------------------------------------ arma equipada
+  /** Soma do atributo secundário na arma, no capacete e no peitoral. */
   attrValue(key) {
-    const w = this.weapon;
-    if (!w || w.attr !== key) return 0;
-    return ATTRS[key].per * w.lvl;
+    let v = 0;
+    for (const it of [this.weapon, this.helmet, this.body]) if (it && it.attr === key) v += ATTRS[key].per * it.lvl;
+    return v;
   }
+  /** Armadura total: da classe + capacete + peitoral (+ atributo de armadura). */
+  armorValue() {
+    if (this.isMonster || !this.cls) return this.summon ? 5 : 0;
+    const h = this.helmet ? ARMOR.helmet.rarity[this.helmet.rarity] : ARMOR.helmet.basic;
+    const c = this.body ? ARMOR.body.rarity[this.body.rarity] : ARMOR.body.basic;
+    return this.cls.armor + h + c + this.attrValue('armor');
+  }
+  helmetArmor() { return this.isMonster ? 0 : (this.helmet ? ARMOR.helmet.rarity[this.helmet.rarity] : ARMOR.helmet.basic); }
+  damageReduction() { return armorReduction(this.armorValue()); }
   rarityDmg() { return this.weapon ? RARITY[this.weapon.rarity].dmg : 0; }
   recalcStats() {
     if (this.isMonster) return;
@@ -139,17 +164,21 @@ export class Character {
     this.maxHp = this.cls.hp + this.attrValue('hp');
     if (this.alive) this.hp = Math.max(1, Math.min(this.maxHp, Math.round(this.maxHp * ratio)));
   }
-  equip(item) {
-    this.weapon = item;
+  /** Equipa uma peça no espaço certo (arma, capacete ou peitoral). Retorna a peça que saiu. */
+  equip(item, slot = null) {
+    const kind = slot || (item ? item.kind || 'weapon' : 'weapon');
+    const old = this[kind === 'weapon' ? 'weapon' : kind];
+    this[kind === 'weapon' ? 'weapon' : kind] = item;
     this.recalcStats();
     if (this.model) this.refreshWeaponGlow();
+    return old;
   }
 
   // ------------------------------------------------------------ modelo
   buildModel() {
     const scene = this.game.scene;
     if (this.model) scene.remove(this.model);
-    const key = this.isMonster ? this.monsterType : this.cls.model;
+    const key = this.isMonster ? (this.monster.model || this.monsterType) : this.cls.model;
     const m = cloneModel(key, { skinned: true });
     const tint = this.isMonster ? (this.summon ? (this.team === TEAM.BLUE ? 0xb8ccff : 0xffc0b8) : undefined) : TEAM_TINT[this.team];
     uniqueMaterials(m, tint);
@@ -158,17 +187,36 @@ export class Character {
     m.traverse(o => { if (o.isMesh) this.mats.push(o.material); });
     // o alabardeiro usa o modelo do cavaleiro sem o escudo nas costas / o mercador sem o chapéu de maga
     if (this.cls && this.cls.hideOffhand) m.traverse(o => { if (/shield/i.test(o.name)) o.visible = false; });
+    if (this.cls && this.cls.hideHat) m.traverse(o => { if (/hat/i.test(o.name)) o.visible = false; });
+    // brilho na cor do time (identificação de aliado e inimigo)
+    this.baseGlow = new THREE.Color(this.team === TEAM.NEUTRAL ? 0x000000 : TEAM_GLOW[this.team]);
+    for (const mat of this.mats) { mat.emissive = this.baseGlow.clone(); mat.emissiveIntensity = 1; }
 
     this.handR = m.getObjectByName('handslotr');
     this.handL = m.getObjectByName('handslotl');
     this.weaponObj = null; this.offObj = null;
     this.attachWeapons();
     if (!this.isMonster || this.summon) {
-      const mk = new THREE.Mesh(markerGeo, new THREE.MeshBasicMaterial({ color: TEAM_HEX[this.team] }));
-      mk.position.y = 3.05;
+      const mk = new THREE.Mesh(markerGeo, new THREE.MeshBasicMaterial({ color: TEAM_HEX[this.team], depthTest: false, transparent: true }));
+      mk.renderOrder = 5;
+      mk.position.y = 3.15;
+      mk.scale.set(1, 1.3, 1);
       if (this.summon) mk.scale.setScalar(0.6);
       m.add(mk);
       this.markerMesh = mk;
+      // anel no chão na cor do time
+      const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: TEAM_HEX[this.team], transparent: true, opacity: 0.85, depthWrite: false }));
+      ring.position.y = 0.06;
+      if (this.summon) ring.scale.setScalar(0.75);
+      m.add(ring);
+      this.teamRing = ring;
+      // nome acima da cabeça
+      if (!this.isPlayer && !this.summon) {
+        const tag = nameSprite(this.name, this.team);
+        tag.position.y = 3.62;
+        m.add(tag);
+        this.nameTag = tag;
+      }
     }
     // barra de vida
     const bar = new THREE.Group();
@@ -198,9 +246,9 @@ export class Character {
     if (this.weaponObj) this.weaponObj.parent && this.weaponObj.parent.remove(this.weaponObj);
     if (this.offObj) this.offObj.parent && this.offObj.parent.remove(this.offObj);
     this.weaponObj = this.offObj = null;
-    const wKey = this.isMonster ? this.monster.weapon : (this.isMerchant && this.mode === 'summoner' ? this.cls.weaponSummoner : this.cls.weapon);
+    const wKey = this.isMonster ? this.monster.weapon : this.cls.weapon;
     const oKey = this.isMonster ? null : this.cls.offhand;
-    const side = this.isMonster ? 'r' : (this.cls.offhandSide || 'r');
+    const side = this.isMonster ? (this.monster.weaponSide || 'r') : (this.cls.offhandSide || 'r');
     if (wKey) {
       const w = cloneModel(wKey);
       if (wKey === 'sword_A' && !this.isMonster) steelify(w);
@@ -456,16 +504,23 @@ export class Character {
       const ally = viewer && viewer.team === this.team;
       this.setOpacity(ally ? 0.35 : 0.06);
       if (this.markerMesh) this.markerMesh.visible = ally;
+      if (this.teamRing) this.teamRing.visible = ally;
+      if (this.nameTag) this.nameTag.visible = ally;
       this._invisVisual = true;
     } else if (this._invisVisual) {
       this.setOpacity(1);
       if (this.markerMesh) this.markerMesh.visible = true;
+      if (this.teamRing) this.teamRing.visible = true;
       this._invisVisual = false;
+    }
+    if (this.nameTag && !this._invisVisual) {
+      const pl = this.game.player;
+      this.nameTag.visible = !!pl && pl.pos.distanceTo(this.pos) < 38;
     }
 
     const flashing = this.game.time < (this.flashUntil || 0);
     if (flashing !== this._flashing) {
-      for (const mat of this.mats) { mat.emissive = mat.emissive || new THREE.Color(); mat.emissive.setRGB(flashing ? 0.7 : 0, flashing ? 0.15 : 0, flashing ? 0.1 : 0); }
+      for (const mat of this.mats) { mat.emissive = mat.emissive || new THREE.Color(); if (flashing) mat.emissive.setRGB(0.7, 0.15, 0.1); else mat.emissive.copy(this.baseGlow || new THREE.Color(0)); }
       this._flashing = flashing;
     }
 

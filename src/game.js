@@ -17,8 +17,15 @@ import { sfx } from './audio.js';
 import { cloneModel } from './assets.js';
 
 const ROLES = ['attacker', 'defender', 'attacker', 'attacker', 'forager', 'defender', 'attacker', 'attacker'];
-const BOT_CLASSES = ['knight', 'ranger', 'barbarian', 'halberdier', 'mage', 'swordsman', 'rogue', 'knight', 'ranger', 'barbarian'];
+const BOT_CLASSES = ['knight', 'ranger', 'barbarian', 'priest', 'halberdier', 'mage', 'swordsman', 'summoner', 'rogue', 'knight', 'ranger', 'barbarian'];
 const COMBAT_CLASSES = CLASS_KEYS.filter(k => k !== 'merchant');
+/** Papel do bot conforme a classe (classes de suporte têm papel próprio). */
+function roleFor(cls, base) {
+  if (cls === 'merchant') return 'merchant';
+  if (cls === 'priest') return 'support';
+  if (cls === 'summoner') return 'attacker';
+  return base;
+}
 
 export class Game {
   constructor(renderer, ui) {
@@ -70,9 +77,10 @@ export class Game {
       for (let i = 0; i < count; i++) {
         let cls = BOT_CLASSES[(i + offset) % BOT_CLASSES.length];
         let role = ROLES[i % ROLES.length];
-        if (wantMerchant && i === count - 1) { cls = 'merchant'; role = 'merchant'; }
+        if (wantMerchant && i === count - 1) cls = 'merchant';
         const ch = new Character(this, { team, classKey: cls, name: BOT_NAMES[team][i % BOT_NAMES[team].length] });
-        new BotAI(ch, role);
+        new BotAI(ch, roleFor(cls, role));
+        ch.ai.baseRole = role;
         botAutoSpend(ch);
         ch.gold = 40 + Math.floor(Math.random() * 30);
         this.characters.push(ch);
@@ -102,7 +110,7 @@ export class Game {
     this.hud.lastClass = null;
     this.running = true;
     this.paused = false;
-    this.announce('Resgate a Princesa Azul!', 'Aperte K para escolher sua primeira skill. Ela está presa no castelo vermelho.', TEAM.BLUE);
+    this.announce('Resgate a Princesa Azul!', 'Skills nas teclas 1 a 5 · aperte K para escolher um perk. Ela está presa no castelo vermelho.', TEAM.BLUE);
     this.foodMeshes = new Map();
   }
 
@@ -112,12 +120,11 @@ export class Game {
     const p = sp.clone();
     p.x += (Math.random() - 0.5) * 2; p.z += (Math.random() - 0.5) * 2;
     ch.spawn(p, castle.facing);
-    if (ch.resRespawn) { ch.st.resBonusUntil = this.time + 15; ch.resRespawn = false; }
     if (ch.ai) ch.ai.reset();
     if (ch.isBot && this.economy) this.economy.botShop(ch);
   }
 
-  /** Volta à vida no lugar indicado (Ressurreição do Mercador de Almas). */
+  /** Volta à vida no lugar indicado (Ressurreição do Sacerdote). */
   reviveChar(ch, pos, yaw) {
     ch.spawn(pos, yaw);
     ch.respawnAt = 0;
@@ -126,14 +133,15 @@ export class Game {
       this.ui.confirmRespawn = false;
       this.ui.hideRespawn();
       this.pc.buildViewmodel();
-      this.announce('Você foi ressuscitado!', '+20% de velocidade de ataque enquanto durar');
+      this.announce('Você foi ressuscitado!', 'Um sacerdote trouxe você de volta');
     }
   }
 
   // ------------------------------------------------------------ invocações
-  summon(owner, type, kind, life, hpMul = 1) {
+  /** Invocação do Invocador: não tem limite de tempo (o limite é de quantidade) e avança contra o inimigo. */
+  summon(owner, type, kind, hpMul = 1, extra = {}) {
     const ch = new Character(this, { team: owner.team, monsterType: type, name: MONSTERS[type].name });
-    ch.summon = { owner, kind, until: this.time + life };
+    ch.summon = { owner, kind, ...extra };
     ch.maxHp = Math.round(ch.monster.hp * hpMul);
     new MonsterAI(ch, null);
     ch.buildModel();
@@ -157,15 +165,12 @@ export class Game {
     }
     target.diedAt = this.time;
     if (target.summon) { target.respawnAt = Infinity; return; }
-    const resurrected = target.resurrectEnd || (target.st.resUntil && this.time < target.st.resUntil);
-    target.resurrectEnd = false;
-    if (resurrected) { target.resRespawn = true; target.st.resUntil = 0; target.respawnAt = this.time; }
-    else target.respawnAt = this.time + (target.isMonster ? 45 : this.economy.respawnTime(target));
+    target.respawnAt = this.time + (target.isMonster ? 45 : this.economy.respawnTime(target));
     if (target.isPlayer) {
       this.pc.deathTime = this.time;
-      const killerName = killer ? (killer.isMonster ? killer.name : killer.name + ' (' + CLASSES[killer.classKey].name + ')') : (resurrected ? 'o fim da ressurreição' : 'o destino');
+      const killerName = killer ? (killer.isMonster ? killer.name : killer.name + ' (' + CLASSES[killer.classKey].name + ')') : 'o destino';
       this.menus.close(true);
-      this.ui.showRespawn(resurrected && !killer ? 'A ressurreição acabou' : `Você foi abatido por ${killerName}`);
+      this.ui.showRespawn(`Você foi abatido por ${killerName}`);
     }
   }
 
@@ -237,10 +242,6 @@ export class Game {
     this.pc.update(dt);
     let cleanup = false;
     for (const c of this.characters) {
-      if (c.summon && c.alive && this.time >= c.summon.until) {
-        this.effects.puff(c.chest, 0xb48aff);
-        this.combat.kill(c, null, { silent: true });
-      }
       if (!c.alive) {
         if (c.summon) { if (this.time - c.diedAt > 3) cleanup = true; else if (c.model && this.time - c.diedAt > 2.5) c.hideModel(); continue; }
         if (c.respawnAt && this.time >= c.respawnAt && !this.over) {
@@ -256,7 +257,11 @@ export class Game {
             c.spawn(c.home, Math.random() * 6);
             c.ai.reset();
           } else {
-            if (!c.isMerchant && Math.random() < 0.25) { c.setClass(COMBAT_CLASSES[Math.floor(Math.random() * COMBAT_CLASSES.length)]); botAutoSpend(c); }
+            if (!c.isMerchant && Math.random() < 0.25) {
+              c.setClass(COMBAT_CLASSES[Math.floor(Math.random() * COMBAT_CLASSES.length)]);
+              botAutoSpend(c);
+              c.ai.role = roleFor(c.classKey, c.ai.baseRole || 'attacker');
+            }
             this.spawnChar(c);
           }
         } else if (c.model && c.model.visible && c.diedAt !== undefined && this.time - c.diedAt > 3.5) {

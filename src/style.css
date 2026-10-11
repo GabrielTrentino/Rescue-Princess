@@ -27,13 +27,13 @@ canvas#game { display: block; width: 100vw; height: 100vh; }
   box-shadow: 0 20px 60px rgba(0,0,0,.6), inset 0 0 0 1px rgba(255,220,150,.08);
   max-height: 96vh; overflow-y: auto;
 }
-.panel.wide { max-width: 980px; }
+.panel.wide { max-width: 1100px; }
 h1 { font-family: var(--display); font-size: 46px; margin: 0 0 6px; color: var(--gold); letter-spacing: 1px; text-shadow: 0 3px 0 #5a3a10; }
 h2 { font-family: var(--display); font-size: 32px; margin: 0 0 8px; color: var(--gold); }
 h3 { font-family: var(--display); margin: 18px 0 10px; font-size: 20px; color: #e8d3a8; }
 .sub { color: #d8c8a8; margin: 0 auto 8px; max-width: 640px; line-height: 1.45; }
 
-.classes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 8px 0 14px; }
+.classes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 8px 0 14px; }
 .cls {
   background: rgba(255,255,255,.04); border: 2px solid rgba(255,255,255,.12); border-radius: 8px;
   padding: 10px 8px; cursor: pointer; text-align: left; transition: transform .1s, border-color .1s, background .1s;
@@ -111,6 +111,8 @@ button:disabled { opacity: .6; cursor: default; }
 #crosshair span { position: absolute; inset: -6px; border: 2px solid transparent; border-radius: 50%; transition: border-color .08s; }
 #crosshair.hit span { border-color: rgba(255,90,60,.95); }
 #crosshair.heal span { border-color: rgba(90,255,120,.95); }
+#crosshair.enemy::before, #crosshair.enemy::after { background: #ff4a3a; }
+#crosshair.ally::before, #crosshair.ally::after { background: #5aa2ff; }
 
 #prompt { position: absolute; left: 50%; top: calc(50% + 44px); transform: translateX(-50%); font-size: 15px; background: rgba(15,10,6,.7); padding: 5px 12px; border-radius: 5px; color: #fff4d8; text-shadow: 0 1px 1px #000; }
 #prompt:empty { display: none; }
@@ -120,7 +122,7 @@ button:disabled { opacity: .6; cursor: default; }
 #bigmsg.show { opacity: 1; }
 #bigmsg small { display: block; font: 500 17px var(--ui); color: #f0e0bc; margin-top: 4px; }
 
-#vitals { position: absolute; left: 16px; bottom: 16px; width: 280px; text-shadow: 0 1px 2px #000; }
+#vitals { position: absolute; left: 16px; bottom: 16px; width: 320px; text-shadow: 0 1px 2px #000; }
 #className { font: 700 20px var(--display); color: var(--gold); margin-bottom: 4px; }
 .bar { position: relative; height: 18px; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.18); border-radius: 4px; overflow: hidden; margin-bottom: 5px; }
 .bar.st { height: 7px; }
@@ -132,7 +134,7 @@ button:disabled { opacity: .6; cursor: default; }
 #carry { font-size: 14px; color: #ffe9b0; min-height: 20px; }
 
 #skills { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
-.skill { position: relative; width: 84px; height: 64px; background: rgba(15,10,6,.78); border: 1px solid rgba(138,106,58,.8); border-radius: 6px; overflow: hidden; text-align: center; }
+.skill { position: relative; width: 84px; height: 78px; background: rgba(15,10,6,.78); border: 1px solid rgba(138,106,58,.8); border-radius: 6px; overflow: hidden; text-align: center; }
 .skill.base { width: 70px; opacity: .92; }
 .skill.mode { width: 80px; border-style: dashed; }
 .skill .key { font-size: 11px; color: #e8d3a8; margin-top: 4px; letter-spacing: 1px; font-weight: 700; }
@@ -246,3 +248,16 @@ button.opt.sel { background: rgba(243,195,74,.25); border-color: var(--gold); }
   #minimap { width: 100px; height: 253px; }
   #score .team { min-width: 110px; padding: 4px 8px; }
 }
+
+/* ---------- ícones das skills ---------- */
+.sicon { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 7px; font-size: 18px; line-height: 1;
+  background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.28), rgba(0,0,0,.25) 70%), var(--cc, #6a5a40);
+  border: 1px solid rgba(255,255,255,.35); box-shadow: inset 0 -2px 4px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.6); }
+.skill .sicon { margin: 1px auto 0; width: 28px; height: 28px; font-size: 17px; }
+.skill .key { position: absolute; left: 4px; top: 2px; margin: 0; }
+.skill .sname { margin-top: 1px; }
+.skh .sicon { width: 34px; height: 34px; font-size: 20px; }
+.c-knight { --cc: #4a6aa8; } .c-barbarian { --cc: #a8582e; } .c-ranger { --cc: #3e8a4a; } .c-mage { --cc: #7a3ea8; }
+.c-rogue { --cc: #3a3a4e; } .c-halberdier { --cc: #6a7a8a; } .c-swordsman { --cc: #a83a4a; } .c-priest { --cc: #c8a83a; }
+.c-merchant { --cc: #b8862a; } .c-summoner { --cc: #4a2a6a; }
+.chances { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; font-size: 13px; background: rgba(255,255,255,.04); border-radius: 6px; padding: 6px; }

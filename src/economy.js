@@ -1,10 +1,12 @@
-// Economia: ouro, armas (raridade, atributo, nível), mochila, queda de armas, banca, cofre, obras do castelo,
-// torres de defesa, moedas, baús, almas, túmulos e as ações do Mercador de Almas.
+// Economia: ouro, itens (arma, capacete, peitoral) com raridade, atributo e nível, mochila, queda da arma,
+// banca, cofre, Oficina, minério, obras do castelo, torres, moedas, baús, almas, túmulos,
+// e as ações do Mercador (fabricar, aprimorar, desmanchar, minerar) e do Sacerdote (ressuscitar).
 import * as THREE from 'three';
 import { cloneModel } from './assets.js';
 import {
-  TEAM, TEAM_HEX, TEAM_NAME, CLASSES, CLASS_KEYS, RARITY, LEVEL_MULT, ATTRS, ATTR_KEYS, PRICE_MODES, STALL, GOLD,
-  MERCHANT, WORKS, WORK_TIME, TOWER, XP, WEAPON_GROUND_TIME, RESPAWN_TIME, MONSTERS,
+  TEAM, TEAM_NAME, CLASSES, CLASS_KEYS, RARITY, LEVEL_MULT, ATTRS, ATTR_KEYS, PRICE_MODES, STALL, GOLD,
+  MERCHANT, SUMMONER, WORKS, WORK_TIME, TOWER, XP, WEAPON_GROUND_TIME, RESPAWN_TIME, MONSTERS, ARMOR, FORGE,
+  rarityWeights,
 } from './config.js';
 import { heightAt } from './world.js';
 import { sfx } from './audio.js';
@@ -15,38 +17,50 @@ import { hostile } from './combat.js';
 
 let ITEM_ID = 1;
 
-// ------------------------------------------------------------------ armas
-export function makeWeapon(cls, rarity, attr, lvl) { return { id: ITEM_ID++, cls, rarity, attr, lvl }; }
-export function basePrice(item) { return Math.round(RARITY[item.rarity].price * LEVEL_MULT[item.lvl - 1]); }
+// ------------------------------------------------------------------ itens
+export function makeItem(kind, cls, rarity, attr, lvl = 1) { return { id: ITEM_ID++, kind, cls: kind === 'weapon' ? cls : null, rarity, attr, lvl }; }
+export function makeWeapon(cls, rarity, attr, lvl) { return makeItem('weapon', cls, rarity, attr, lvl); }
+export const itemKind = (it) => (it && it.kind) || 'weapon';
+export function basePrice(item) {
+  const k = itemKind(item);
+  const mult = k === 'weapon' ? 1 : ARMOR[k].price;
+  return Math.round(RARITY[item.rarity].price * LEVEL_MULT[item.lvl - 1] * mult);
+}
 export function sellValue(item) { return Math.round(basePrice(item) * 0.5); }
 export function stallPrice(item, mode) { return Math.round(basePrice(item) * PRICE_MODES[mode].mult); }
-export function weaponLabel(item) {
-  if (!item) return 'Arma básica';
-  return `${CLASSES[item.cls].icon} ${RARITY[item.rarity].name} +${item.lvl}`;
+export function itemIcon(item) { const k = itemKind(item); return k === 'weapon' ? CLASSES[item.cls].icon : ARMOR[k].icon; }
+export function itemName(item) { const k = itemKind(item); return k === 'weapon' ? CLASSES[item.cls].name : ARMOR[k].name; }
+export function weaponLabel(item, empty = 'Arma básica') {
+  if (!item) return empty;
+  return `${itemIcon(item)} ${RARITY[item.rarity].name} +${item.lvl}`;
 }
-export function weaponDesc(item) {
+export function itemDesc(item) {
   if (!item) return 'Sem bônus';
-  const r = RARITY[item.rarity];
-  return `+${Math.round(r.dmg * 100)}% de dano · ${ATTRS[item.attr].fmt(ATTRS[item.attr].per * item.lvl)}`;
+  const r = RARITY[item.rarity], k = itemKind(item);
+  const main = k === 'weapon' ? `+${Math.round(r.dmg * 100)}% de dano` : `${ARMOR[k].rarity[item.rarity]} de armadura`;
+  return `${main} · ${ATTRS[item.attr].fmt(ATTRS[item.attr].per * item.lvl)}`;
 }
-export function weaponHtml(item) {
-  if (!item) return '<span class="wpn">Arma básica</span>';
+export const weaponDesc = itemDesc;
+export function weaponHtml(item, empty = 'Arma básica') {
+  if (!item) return `<span class="wpn">${empty}</span>`;
   const r = RARITY[item.rarity];
-  return `<span class="wpn" style="color:${r.css}">${CLASSES[item.cls].icon} ${CLASSES[item.cls].name} · ${r.name} +${item.lvl}</span><small>${weaponDesc(item)}</small>`;
+  return `<span class="wpn" style="color:${r.css}">${itemIcon(item)} ${itemName(item)} · ${r.name} +${item.lvl}</span><small>${itemDesc(item)}</small>`;
 }
+export const itemHtml = weaponHtml;
 export function weaponScore(item) { return item ? item.rarity * 10 + item.lvl * 2 + 1 : 0; }
+/** O personagem pode equipar a peça? Armas só da própria classe; armaduras, qualquer classe. */
+export function canEquip(ch, item) { return itemKind(item) !== 'weapon' || item.cls === ch.classKey; }
+export function equippedIn(ch, item) { return ch[itemKind(item)]; }
+/** A peça é melhor do que a equipada no mesmo espaço? */
+export function isUpgrade(ch, item) { return canEquip(ch, item) && weaponScore(item) > weaponScore(equippedIn(ch, item)); }
 
-export function craftEnergy(rarity, lvl, perk) {
-  const e = RARITY[rarity].energy + MERCHANT.levelExtraEnergy * (lvl - 1);
-  return Math.round(e * (perk === 'B' ? 0.8 : 1));
+export function craftEnergy(kind, perk) { return Math.round(MERCHANT.craftEnergy[kind] * (perk === 'B' ? 0.8 : 1)); }
+export function craftTime(perk, inside) { return MERCHANT.craftTime * (perk === 'A' ? 0.7 : 1) * (inside ? 1 : MERCHANT.outsideTimeMult); }
+export function upgradeCost(newLvl, perk) { return { energy: Math.round(8 * newLvl * (perk === 'A' ? 0.7 : 1)), ore: Math.max(1, newLvl - (perk === 'A' ? 1 : 0)) }; }
+export function refineCost(newRarity, perk) { return { energy: Math.round((12 + 8 * newRarity) * (perk === 'A' ? 0.7 : 1)), ore: 3 }; }
+export function scrapReturn(item, perk) {
+  return { energy: Math.round(MERCHANT.craftEnergy[itemKind(item)] * (perk === 'A' ? 0.75 : 0.5)), ore: 1 + item.rarity + (perk === 'A' ? 1 : 0) };
 }
-export function craftTime(rarity, lvl, perk, inside) {
-  const t = RARITY[rarity].time + MERCHANT.levelExtraTime * (lvl - 1);
-  return t * (perk === 'A' ? 0.7 : 1) * (inside ? 1 : MERCHANT.outsideTimeMult);
-}
-export function upgradeEnergy(newLvl, perk) { return Math.round(8 * newLvl * (perk === 'A' ? 0.7 : 1)); }
-export function refineEnergy(newRarity, perk) { return Math.round(RARITY[newRarity].energy * (perk === 'A' ? 0.7 : 1)); }
-export function maxRarityFor(level) { let r = 0; for (let i = 0; i < RARITY.length; i++) if (level >= RARITY[i].level) r = i; return r; }
 export function workCost(key, level, perk) {
   const c = WORKS[key].costs[level];
   if (!c) return null;
@@ -88,6 +102,7 @@ class Tower {
   flash() {}
   attrValue() { return 0; }
   rarityDmg() { return 0; }
+  damageReduction() { return 0; }
   setLevel(level) {
     const ratio = this.alive ? this.hp / this.maxHp : 1;
     this.level = level;
@@ -110,14 +125,13 @@ class Tower {
     this.game.scene.add(this.ruin);
     this.game.effects.explosion(this.chest, 4, 0xc8b089);
   }
-  update(dt) {
+  update() {
     if (!this.alive) return;
     const g = this.game, C = g.combat;
     if (g.time < this.nextShot) return;
     const castle = g.world.castles[this.team];
     let best = null, bd = TOWER.range;
     const eye = (o) => {
-      // ponto de tiro do lado de fora do colisor da torre, virado para o alvo
       const dx = o.pos.x - this.pos.x, dz = o.pos.z - this.pos.z, l = Math.hypot(dx, dz) || 1;
       return new THREE.Vector3(this.pos.x + dx / l * 2.1, this.pos.y + 5.6, this.pos.z + dz / l * 2.1);
     };
@@ -139,6 +153,34 @@ class Tower {
   }
 }
 
+// ------------------------------------------------------------------ modelos de armadura (não há no pacote KayKit)
+function armorMesh(kind, color) {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: 0x9aa3b0, metalness: 0.6, roughness: 0.35, emissive: color, emissiveIntensity: 0.35 });
+  if (kind === 'helmet') {
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), mat);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.05, 6, 20).rotateX(Math.PI / 2), mat);
+    const crest = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.18, 0.6), mat); crest.position.y = 0.42;
+    g.add(dome, rim, crest);
+  } else {
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.42, 0.85, 12, 1, true), mat);
+    mat.side = THREE.DoubleSide;
+    const pad1 = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 6), mat); pad1.position.set(-0.52, 0.36, 0);
+    const pad2 = pad1.clone(); pad2.position.x = 0.52;
+    g.add(body, pad1, pad2);
+    body.position.y = 0;
+  }
+  return g;
+}
+function itemMesh(item, scale = 0.8) {
+  const k = itemKind(item), col = RARITY[item.rarity].color;
+  if (k !== 'weapon') return armorMesh(k, col);
+  const m = cloneModel(CLASSES[item.cls].weapon);
+  m.scale.setScalar(scale);
+  m.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.emissive = new THREE.Color(col); o.material.emissiveIntensity = 0.45; } });
+  return m;
+}
+
 // ------------------------------------------------------------------ economia
 export class Economy {
   constructor(game) {
@@ -147,6 +189,7 @@ export class Economy {
     this.vault = [GOLD.vaultStart, GOLD.vaultStart];
     this.stalls = [0, 1].map(t => ({ team: t, pos: w.castles[t].stallPos, slots: [], depot: [] }));
     this.works = [0, 1].map(() => ({ barracks: 0, ossuary: 0, banner: 0, towers: 0, treasury: 0 }));
+    this.forge = [0, 1].map(() => ({ master: 0, legend: 0, luck1: 0, luck2: 0, luck3: 0, shelf: 0 }));
     this.building = [null, null];
     this.towers = [[], []];
     this.ground = [];
@@ -154,6 +197,7 @@ export class Economy {
     this.coins = w.coinSpawns.map(p => this.makeCoin(p));
     this.chests = w.chestSpawns.map(p => this.makeChest(p));
     this.tombs = w.tombSpawns.map(p => this.makeTomb(p));
+    this.veins = w.veinSpawns.map(p => this.makeVein(p));
     this.fallbackAt = 3;
     for (const t of [0, 1]) this.buildStall(t);
   }
@@ -161,9 +205,13 @@ export class Economy {
   // ------------------------------------------------------------ consultas
   workLevel(team, key) { return team === TEAM.BLUE || team === TEAM.RED ? this.works[team][key] : 0; }
   merchantsOf(team) { return this.game.characters.filter(c => c.isMerchant && c.team === team); }
+  rarityCap(team) { const f = this.forge[team]; return 2 + f.master + f.legend; }
+  luckOf(team) { const f = this.forge[team]; return f.luck1 + f.luck2 + f.luck3; }
+  craftChances(m) { return rarityWeights(m.level, this.luckOf(m.team), this.rarityCap(m.team)); }
   stallSlotsMax(team) {
-    for (const m of this.merchantsOf(team)) if (perkOf(m, SKILL_BY_ID.m_stall) === 'B') return STALL.slotsVitrine;
-    return STALL.slots;
+    let n = STALL.slots + (this.forge[team].shelf ? STALL.shelf : 0);
+    for (const m of this.merchantsOf(team)) if (perkOf(m, SKILL_BY_ID.m_stall) === 'B') { n += STALL.vitrine; break; }
+    return n;
   }
   respawnTime(ch) {
     const base = RESPAWN_TIME + (ch.isPlayer ? 0 : 2);
@@ -181,16 +229,14 @@ export class Economy {
     const grp = new THREE.Group();
     grp.position.set(s.pos.x, heightAt(s.pos.x, s.pos.z), s.pos.z);
     grp.rotation.y = team === TEAM.BLUE ? 0 : Math.PI;
-    const counter = cloneModel('crate_long_A'); counter.scale.setScalar(5); counter.position.set(0, 0, 0); counter.rotation.y = Math.PI / 2;
+    const counter = cloneModel('crate_long_A'); counter.scale.setScalar(5); counter.rotation.y = Math.PI / 2;
     const rack = cloneModel('weaponrack'); rack.scale.setScalar(7); rack.position.set(0, 0, -2.2);
     const chest = cloneModel('chest_gold'); chest.scale.setScalar(1.2); chest.position.set(-3, 0, -0.6); chest.rotation.y = 0.5;
     const tent = cloneModel('tent'); tent.scale.setScalar(8); tent.position.set(0.5, 0, -3.6);
     grp.add(counter, rack, chest, tent);
-    // placa
     const sign = this.textSprite('Banca do Mercador', team === TEAM.BLUE ? '#bcd4ff' : '#ffc2b8');
     sign.position.set(0, 3.6, 0);
     grp.add(sign);
-    // armas expostas (atualizadas quando muda)
     s.display = new THREE.Group();
     s.display.position.set(0, 1.25, 0);
     grp.add(s.display);
@@ -219,13 +265,11 @@ export class Economy {
     s.dirty = false;
     const d = s.display;
     while (d.children.length) d.remove(d.children[0]);
-    s.slots.slice(0, 6).forEach((sl, i) => {
-      const m = cloneModel(CLASSES[sl.item.cls].weapon);
-      m.scale.setScalar(0.55);
-      m.rotation.set(0, 0, Math.PI / 2);
-      m.position.set(-2 + i * 0.8, 0.1, 0);
-      const col = RARITY[sl.item.rarity].color;
-      m.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.emissive = new THREE.Color(col); o.material.emissiveIntensity = 0.4; } });
+    s.slots.slice(0, 8).forEach((sl, i) => {
+      const m = itemMesh(sl.item, 0.5);
+      if (itemKind(sl.item) === 'weapon') m.rotation.set(0, 0, Math.PI / 2);
+      else m.scale.setScalar(0.55);
+      m.position.set(-2.2 + i * 0.62, 0.1, 0);
       d.add(m);
     });
   }
@@ -278,17 +322,36 @@ export class Economy {
     return { pos: new THREE.Vector3(p.x, grp.position.y, p.z + 0.9), mesh: grp, glow, readyAt: 0 };
   }
 
+  makeVein(p) {
+    const g = this.game;
+    const grp = new THREE.Group();
+    const rock = cloneModel('Rock_1_J_Color1'); rock.scale.setScalar(0.9); grp.add(rock);
+    const crystalMat = new THREE.MeshStandardMaterial({ color: 0x6ee6ff, emissive: 0x2a8aaa, emissiveIntensity: 0.8, roughness: 0.2, metalness: 0.2 });
+    const crystals = new THREE.Group();
+    for (let i = 0; i < 5; i++) {
+      const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.22 + Math.random() * 0.15, 0), crystalMat);
+      const a = i / 5 * Math.PI * 2;
+      c.position.set(Math.cos(a) * 0.7, 0.9 + Math.random() * 0.5, Math.sin(a) * 0.7);
+      c.scale.y = 1.8;
+      c.rotation.z = (Math.random() - 0.5) * 0.8;
+      crystals.add(c);
+    }
+    grp.add(crystals);
+    grp.position.set(p.x, heightAt(p.x, p.z), p.z);
+    g.scene.add(grp);
+    g.col.addCircle(p.x, p.z, 1.3, 1.5);
+    return { pos: grp.position.clone(), mesh: grp, crystals, active: true, respawnAt: 0 };
+  }
+
   // ------------------------------------------------------------ itens no chão
   spawnGroundWeapon(item, pos) {
     const g = this.game;
     const grp = new THREE.Group();
-    const m = cloneModel(CLASSES[item.cls].weapon);
-    m.scale.setScalar(0.8);
-    m.rotation.set(Math.PI / 2, 0, 0.4);
-    m.position.y = 0.25;
-    const col = RARITY[item.rarity].color;
-    m.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.emissive = new THREE.Color(col); o.material.emissiveIntensity = 0.45; } });
+    const m = itemMesh(item, 0.8);
+    if (itemKind(item) === 'weapon') m.rotation.set(Math.PI / 2, 0, 0.4);
+    m.position.y = itemKind(item) === 'weapon' ? 0.25 : 0.45;
     grp.add(m);
+    const col = RARITY[item.rarity].color;
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.6, 0.85, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.8, depthWrite: false }));
     ring.position.y = 0.06; grp.add(ring);
     const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.3, 4, 8, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide }));
@@ -318,17 +381,34 @@ export class Economy {
     if (i >= 0) this.ground.splice(i, 1);
   }
 
-  /** Arma ou ouro mais próximo que o personagem pode pegar. */
+  /** Coisa mais próxima que o personagem pode pegar ou usar com E. */
   nearestPickup(ch, r = 2.6) {
     let best = null, bd = r;
-    const consider = (kind, obj, pos) => {
+    const consider = (kind, obj, pos, rr = r) => {
       const d = Math.hypot(pos.x - ch.pos.x, pos.z - ch.pos.z);
-      if (d < bd) { bd = d; best = { kind, obj }; }
+      if (d < bd && d < rr) { bd = d; best = { kind, obj }; }
     };
     for (const it of this.ground) consider(it.kind, it, it.pos);
     for (const c of this.coins) if (c.active) consider('coin', c, c.pos);
     for (const c of this.chests) if (c.active) consider('chest', c, c.pos);
+    if (ch.isMerchant) for (const v of this.veins) if (v.active) consider('vein', v, v.pos, 3);
     return best;
+  }
+
+  /** Guarda ou equipa uma peça. Retorna texto ou null (mochila cheia). */
+  receiveItem(ch, item) {
+    if (isUpgrade(ch, item)) {
+      const old = ch.equip(item);
+      if (old) {
+        if (ch.backpack.length < ch.backpackSize) ch.backpack.push(old);
+        else this.spawnGroundWeapon(old, ch.pos);
+      }
+      if (ch.isPlayer) this.game.pc.buildViewmodel();
+      return 'Equipado: ' + weaponLabel(item);
+    }
+    if (ch.backpack.length >= ch.backpackSize) return null;
+    ch.backpack.push(item);
+    return 'Na mochila: ' + weaponLabel(item);
   }
 
   /** Coleta. Ouro do mercador vai para o cofre; cada coleta dá energia ao mercador. Retorna texto ou null. */
@@ -339,20 +419,12 @@ export class Economy {
       if (ch.isMerchant) { this.vault[ch.team] += n; msg = `+${n} de ouro no cofre`; }
       else { ch.gold += n; msg = `+${n} de ouro`; }
     };
+    if (p.kind === 'vein') return this.mine(ch, p.obj) === true ? 'Minerando...' : null;
     if (p.kind === 'weapon') {
-      if (ch.backpack.length >= ch.backpackSize) {
-        // troca direto se for da classe e a arma equipada for a básica
-        if (p.obj.item.cls === ch.classKey && !ch.weapon) { ch.equip(p.obj.item); this.removeGround(p.obj); msg = 'Arma equipada'; }
-        else { if (ch.isPlayer && !silent) g.announce('Mochila cheia', 'Venda ou troque uma arma'); return null; }
-      } else {
-        const item = p.obj.item;
-        this.removeGround(p.obj);
-        if (item.cls === ch.classKey && weaponScore(item) > weaponScore(ch.weapon)) {
-          if (ch.weapon) ch.backpack.push(ch.weapon);
-          ch.equip(item);
-          msg = 'Arma equipada: ' + weaponLabel(item);
-        } else { ch.backpack.push(item); msg = 'Na mochila: ' + weaponLabel(item); }
-      }
+      const r = this.receiveItem(ch, p.obj.item);
+      if (!r) { if (ch.isPlayer && !silent) g.announce('Mochila cheia', 'Venda ou largue uma peça (I)'); return null; }
+      this.removeGround(p.obj);
+      msg = r;
     } else if (p.kind === 'gold') { giveGold(p.obj.amount); this.removeGround(p.obj); }
     else if (p.kind === 'coin') { giveGold(p.obj.amount); p.obj.active = false; p.obj.mesh.visible = false; p.obj.respawnAt = g.time + GOLD.coinRespawn; }
     else if (p.kind === 'chest') { giveGold(GOLD.chest); p.obj.active = false; p.obj.mesh.visible = false; p.obj.glow.visible = false; p.obj.respawnAt = g.time + GOLD.chestRespawn; sfx('chest', g.combat.dist(ch)); }
@@ -362,7 +434,6 @@ export class Economy {
     return msg;
   }
 
-  /** Dica da tecla E para o jogador (depois dos objetivos). */
   promptFor(ch) {
     if (!ch.alive) return '';
     const p = this.nearestPickup(ch);
@@ -371,6 +442,7 @@ export class Economy {
       if (p.kind === 'gold') return `<b>[E]</b> Pegar ${p.obj.amount} de ouro`;
       if (p.kind === 'coin') return `<b>[E]</b> Pegar moedas (${p.obj.amount})`;
       if (p.kind === 'chest') return `<b>[E]</b> Abrir o baú (${GOLD.chest} de ouro)`;
+      if (p.kind === 'vein') return ch.channel ? '' : '<b>[E]</b> Minerar (minério para aprimorar)';
     }
     if (this.nearStall(ch)) return '<b>[E]</b> Abrir a banca do mercador';
     const m = this.nearbyMerchant(ch);
@@ -384,7 +456,6 @@ export class Economy {
     return null;
   }
 
-  /** Tecla E (jogador): coleta, banca ou venda ao mercador. Retorna o nome do menu a abrir, ou true/false. */
   interact(ch) {
     const p = this.nearestPickup(ch);
     if (p) return !!this.pickup(ch, p);
@@ -398,17 +469,13 @@ export class Economy {
     const s = this.stalls[ch.team], sl = s.slots[idx];
     if (!sl) return 'Item indisponível';
     if (ch.gold < sl.price) return 'Ouro insuficiente';
-    if (ch.backpack.length >= ch.backpackSize && !(sl.item.cls === ch.classKey && !ch.weapon)) return 'Mochila cheia';
+    if (ch.backpack.length >= ch.backpackSize && !isUpgrade(ch, sl.item)) return 'Mochila cheia';
     ch.gold -= sl.price;
     s.slots.splice(idx, 1);
     s.dirty = true;
     this.vault[ch.team] += sl.price;
     const it = sl.item;
-    if (it.cls === ch.classKey && weaponScore(it) > weaponScore(ch.weapon)) {
-      if (ch.weapon) ch.backpack.push(ch.weapon);
-      ch.equip(it);
-    } else ch.backpack.push(it);
-    // energia e XP para o mercador que expôs
+    this.receiveItem(ch, it);
     const m = sl.exposedBy;
     if (m && m.isMerchant && m.team === ch.team) {
       if (sl.mode === 'discount') this.addEnergy(m, Math.round(RARITY[it.rarity].discount * LEVEL_MULT[it.lvl - 1]));
@@ -418,7 +485,6 @@ export class Economy {
     return true;
   }
 
-  /** Jogador vende um item da mochila ao time (mercador por perto ou banca). */
   sell(ch, idx, merchant = null) {
     const it = ch.backpack[idx];
     if (!it) return 'Item inválido';
@@ -434,7 +500,7 @@ export class Economy {
     ch.backpack.splice(idx, 1);
     dest.push(it);
     const m = merchant || this.merchantsOf(ch.team).find(x => x.alive) || null;
-    if (m) this.addEnergy(m, MERCHANT.buyEnergy);
+    if (m) { this.addEnergy(m, MERCHANT.buyEnergy); addXp(m, XP.buyFromPlayer, 'troca'); }
     sfx('buy', this.game.combat.dist(ch));
     return true;
   }
@@ -472,14 +538,9 @@ export class Economy {
     return true;
   }
 
-  // ------------------------------------------------------------ Mercador: energia, almas, canalização
+  // ------------------------------------------------------------ Mercador: energia, minério, canalização
   addEnergy(m, n) { m.energy = Math.max(0, Math.min(MERCHANT.energyMax, m.energy + n)); }
-  addSouls(m, n) {
-    const before = m.souls;
-    m.souls = Math.min(MERCHANT.soulsMax, m.souls + n);
-    const over = n - (m.souls - before);
-    if (over > 0.0001) this.addEnergy(m, over * MERCHANT.soulOverflowEnergy);
-  }
+  addSouls(m, n) { m.souls = Math.min(SUMMONER.soulsMax, m.souls + n); }
 
   startChannel(ch, kind, dur, onDone, refund) {
     ch.channel = { kind, start: this.game.time, until: this.game.time + dur, dur, onDone, refund };
@@ -491,24 +552,47 @@ export class Economy {
     if (!c) return;
     ch.channel = null;
     if (c.refund) c.refund();
-    if (ch.isPlayer) this.game.hud.status(byDamage ? 'Interrompido! A energia voltou.' : 'Cancelado. A energia voltou.');
+    if (ch.isPlayer) this.game.hud.status(byDamage ? 'Interrompido! O custo voltou.' : 'Cancelado. O custo voltou.');
   }
 
-  craft(m, { cls, rarity, attr, lvl }) {
+  mine(m, vein) {
+    if (!m.isMerchant || !vein.active || m.channel) return 'Indisponível';
+    this.startChannel(m, 'mine', MERCHANT.mineTime, () => {
+      if (!vein.active) return;
+      const n = MERCHANT.oreMin + Math.floor(Math.random() * (MERCHANT.oreMax - MERCHANT.oreMin + 1));
+      m.ore += n;
+      vein.active = false; vein.crystals.visible = false; vein.respawnAt = this.game.time + MERCHANT.veinRespawn;
+      addXp(m, XP.mine, 'mineração');
+      sfx('craft', this.game.combat.dist(m));
+      if (m.isPlayer) this.game.hud.status(`+${n} minério`);
+    }, null);
+    sfx('swing', this.game.combat.dist(m));
+    return true;
+  }
+
+  rollRarity(m) {
+    const w = this.craftChances(m);
+    let r = Math.random(), i = 0;
+    for (; i < w.length - 1; i++) { if (r < w[i]) break; r -= w[i]; }
+    return i;
+  }
+
+  /** Fabrica uma peça. spec = { kind: 'weapon'|'helmet'|'chest', cls (arma), attr }. A raridade é sorteada. */
+  craft(m, { kind = 'weapon', cls, attr }) {
     const sk = SKILL_BY_ID.m_craft, perk = perkOf(m, sk);
-    if (perk === undefined) return 'Skill bloqueada';
     if ((m.cd[sk.id] || 0) > 0 || m.channel) return 'Aguarde';
-    if (rarity > maxRarityFor(m.level)) return `Raridade disponível no nível ${RARITY[rarity].level}`;
-    const cost = craftEnergy(rarity, lvl, perk);
+    const cost = craftEnergy(kind, perk);
     if (m.energy < cost) return `Energia insuficiente (${cost})`;
     m.energy -= cost;
-    const dur = craftTime(rarity, lvl, perk, this.inCity(m));
+    const dur = craftTime(perk, this.inCity(m));
     this.game.combat.commitSkill(m, sk);
     this.startChannel(m, 'craft', dur, () => {
-      const it = makeWeapon(cls, rarity, attr, lvl);
+      const rarity = this.rollRarity(m);
+      const it = makeItem(kind, cls || 'knight', rarity, attr, 1);
       this.storeForMerchant(m, it);
+      addXp(m, XP.craft[rarity], 'fabricação');
       sfx('craft', this.game.combat.dist(m));
-      if (m.isPlayer) this.game.announce('Arma fabricada!', weaponLabel(it) + ' · ' + weaponDesc(it));
+      if (m.isPlayer) this.game.announce(`Fabricado: ${RARITY[rarity].name}!`, weaponLabel(it) + ' · ' + itemDesc(it));
     }, () => this.addEnergy(m, cost));
     sfx('craft', this.game.combat.dist(m));
     return true;
@@ -520,57 +604,70 @@ export class Economy {
     else this.spawnGroundWeapon(it, m.pos);
   }
 
-  /** Aprimorar: target = {bag: idx} ou {ally: ch}; refine = sobe a raridade (perk Refino). */
+  /** Aprimorar: target = {bag: idx} ou {ally: ch, slot}; refine = sobe a raridade (perk Refino). Custa energia e minério. */
   upgrade(m, target, refine = false) {
     const sk = SKILL_BY_ID.m_upgrade, perk = perkOf(m, sk);
-    if (perk === undefined) return 'Skill bloqueada';
     if ((m.cd[sk.id] || 0) > 0 || m.channel) return 'Aguarde';
-    const item = target.ally ? target.ally.weapon : m.backpack[target.bag];
-    if (!item) return 'Sem arma para aprimorar';
+    const item = target.ally ? target.ally[target.slot || 'weapon'] : m.backpack[target.bag];
+    if (!item) return 'Sem peça para aprimorar';
     if (target.ally && target.ally.pos.distanceTo(m.pos) > 4.5) return 'O aliado precisa estar a até 4 m';
     let cost;
     if (refine) {
       if (perk !== 'B') return 'Precisa do perk Refino';
       if (item.rarity >= RARITY.length - 1) return 'Já é lendária';
-      if (item.rarity + 1 > maxRarityFor(m.level)) return `Raridade disponível no nível ${RARITY[item.rarity + 1].level}`;
-      cost = refineEnergy(item.rarity + 1, perk);
+      if (item.rarity + 1 > this.rarityCap(m.team)) return 'Raridade ainda não liberada na Oficina';
+      cost = refineCost(item.rarity + 1, perk);
     } else {
       if (item.lvl >= 5) return 'Já está no +5';
-      cost = upgradeEnergy(item.lvl + 1, perk);
+      cost = upgradeCost(item.lvl + 1, perk);
     }
-    if (m.energy < cost) return `Energia insuficiente (${cost})`;
-    m.energy -= cost;
+    if (m.energy < cost.energy) return `Energia insuficiente (${cost.energy})`;
+    if (m.ore < cost.ore) return `Minério insuficiente (${cost.ore})`;
+    m.energy -= cost.energy; m.ore -= cost.ore;
     this.game.combat.commitSkill(m, sk);
     this.startChannel(m, 'upgrade', 2, () => {
       if (refine) item.rarity++; else item.lvl++;
-      if (target.ally) target.ally.recalcStats();
-      if (target.ally && target.ally.model) target.ally.refreshWeaponGlow();
-      if (target.ally && target.ally.isPlayer) this.game.pc.buildViewmodel();
+      if (target.ally) { target.ally.recalcStats(); if (target.ally.model) target.ally.refreshWeaponGlow(); if (target.ally.isPlayer) this.game.pc.buildViewmodel(); }
+      addXp(m, XP.upgrade, 'aprimoramento');
       sfx('craft', this.game.combat.dist(m));
-      if (m.isPlayer) this.game.announce('Arma aprimorada!', weaponLabel(item));
-      if (target.ally && target.ally.isPlayer) this.game.announce('Sua arma foi aprimorada!', weaponLabel(item));
-    }, () => this.addEnergy(m, cost));
+      if (m.isPlayer) this.game.announce('Peça aprimorada!', weaponLabel(item));
+      if (target.ally && target.ally.isPlayer) this.game.announce('Sua peça foi aprimorada!', weaponLabel(item));
+    }, () => { this.addEnergy(m, cost.energy); m.ore += cost.ore; });
     return true;
   }
 
   scrap(m, idx) {
     const sk = SKILL_BY_ID.m_scrap, perk = perkOf(m, sk);
-    if (perk === undefined) return 'Skill bloqueada';
     if ((m.cd[sk.id] || 0) > 0) return 'Aguarde';
     const it = m.backpack[idx];
     if (!it) return 'Item inválido';
     m.backpack.splice(idx, 1);
-    const e = Math.round(craftEnergy(it.rarity, it.lvl, null) * (perk === 'A' ? 0.75 : 0.5));
-    this.addEnergy(m, e);
-    if (perk === 'B') this.vault[m.team] += Math.round(RARITY[it.rarity].price * 0.25);
+    const r = scrapReturn(it, perk);
+    this.addEnergy(m, r.energy);
+    m.ore += r.ore;
+    if (perk === 'B') this.vault[m.team] += Math.round(basePrice(it) * 0.25);
     this.game.combat.commitSkill(m, sk);
+    addXp(m, XP.scrap, 'reciclagem');
     sfx('craft', this.game.combat.dist(m));
+    return true;
+  }
+
+  buyForge(m, key) {
+    const f = this.forge[m.team], def = FORGE[key];
+    if (!def) return 'Melhoria inválida';
+    if (f[key]) return 'Já comprada';
+    if (def.req && !f[def.req]) return `Precisa de ${FORGE[def.req].name}`;
+    if (this.vault[m.team] < def.cost) return `Cofre sem ouro suficiente (${def.cost})`;
+    this.vault[m.team] -= def.cost;
+    f[key] = 1;
+    this.stalls[m.team].dirty = true;
+    addXp(m, XP.forge, 'Oficina');
+    sfx('levelup', this.game.combat.dist(m));
     return true;
   }
 
   startWork(m, key) {
     const sk = SKILL_BY_ID.m_works, perk = perkOf(m, sk);
-    if (perk === undefined) return 'Skill bloqueada';
     if (!this.inCity(m)) return 'Só dentro da cidade';
     if (this.building[m.team]) return 'Já há uma obra em andamento';
     const lvl = this.works[m.team][key];
@@ -593,7 +690,7 @@ export class Economy {
     if (!lvl) return 'Sem torres';
     const dead = this.towers[m.team].filter(t => !t.alive);
     if (!dead.length) return 'Nenhuma torre destruída';
-    const sk = SKILL_BY_ID.m_works, perk = perkOf(m, sk);
+    const perk = perkOf(m, SKILL_BY_ID.m_works);
     const gold = Math.round(WORKS.towers.costs[lvl - 1][0] * 0.5 * (perk === 'A' ? 0.8 : 1)) * dead.length;
     if (this.vault[m.team] < gold) return `Cofre sem ouro suficiente (${gold})`;
     this.vault[m.team] -= gold;
@@ -608,8 +705,7 @@ export class Economy {
     w[b.key]++;
     if (b.key === 'towers') this.applyTowers(team);
     if (b.by) addXp(b.by, XP.workDone, 'obra');
-    const pl = this.game.player;
-    if (pl.team === team) this.game.announce(`Obra concluída: ${WORKS[b.key].name} (nível ${w[b.key]})`, WORKS[b.key].desc, team);
+    if (this.game.player.team === team) this.game.announce(`Obra concluída: ${WORKS[b.key].name} (nível ${w[b.key]})`, WORKS[b.key].desc, team);
     this.game.feed(`<span class="${team ? 'r' : 'b'}">Time ${TEAM_NAME[team]}</span> concluiu a obra <span class="g">${WORKS[b.key].name} ${w[b.key]}</span>`);
   }
 
@@ -625,57 +721,53 @@ export class Economy {
     for (const t of this.towers[team]) t.setLevel(lvl);
   }
 
-  revive(m, ally) {
-    const sk = SKILL_BY_ID.s_revive, perk = perkOf(m, sk);
-    if (perk === undefined) return 'Skill bloqueada';
-    if ((m.cd[sk.id] || 0) > 0) return 'Aguarde';
-    const cost = perk === 'B' ? 8 : 10;
-    if (m.souls < cost) return `Almas insuficientes (${cost})`;
-    if (!ally || ally.alive || ally.team !== m.team || ally.isMonster || ally === m) return 'Aliado inválido';
+  // ------------------------------------------------------------ Sacerdote: ressurreição
+  revive(priest, ally) {
+    const sk = SKILL_BY_ID.p_revive, perk = perkOf(priest, sk);
+    if ((priest.cd[sk.id] || 0) > 0) return 'Aguarde a recarga';
+    if (!priest.alive) return 'Você está morto';
+    if (!ally || ally.alive || ally.team !== priest.team || ally.isMonster || ally === priest) return 'Aliado inválido';
     const g = this.game;
-    g.combat.commitSkill(m, sk);
-    const f = m.forward();
-    const p = new THREE.Vector3(m.pos.x + f.x * 2, 0, m.pos.z + f.z * 2);
+    g.combat.commitSkill(priest, sk);
+    const f = priest.forward();
+    const p = new THREE.Vector3(priest.pos.x + f.x * 2, 0, priest.pos.z + f.z * 2);
     g.col.resolve(p, 0.6, 0);
-    g.reviveChar(ally, p, m.yaw);
-    ally.st.resUntil = g.time + (perk === 'A' ? 90 : 60);
-    addXp(m, XP.resurrect, 'ressurreição');
-    sfx('summon', g.combat.dist(m));
-    g.effects.ring(p, 3, 0xb48aff, 0.8);
-    g.feed(`<span class="${m.team ? 'r' : 'b'}">${m.displayName}</span> ressuscitou <span class="${ally.team ? 'r' : 'b'}">${ally.displayName}</span>`);
+    g.reviveChar(ally, p, priest.yaw);
+    ally.hp = Math.max(1, Math.round(ally.maxHp * (perk === 'A' ? 1 : 0.5)));
+    addXp(priest, XP.resurrect, 'ressurreição');
+    sfx('heal', g.combat.dist(priest));
+    g.effects.ring(p, 3, 0xfff0a0, 0.8);
+    g.feed(`<span class="${priest.team ? 'r' : 'b'}">${priest.displayName}</span> ressuscitou <span class="${ally.team ? 'r' : 'b'}">${ally.displayName}</span>`);
     return true;
   }
 
-  harvest(m, r, loot) {
+  // ------------------------------------------------------------ almas (só o Invocador coleta)
+  harvest(s, r) {
     let n = 0;
-    for (const s of this.souls) {
-      if (s.owner !== m || s.taken) continue;
-      if (s.pos.distanceTo(m.pos) < r) { this.takeSoul(s); n++; }
-    }
-    if (loot) {
-      for (const it of [...this.ground]) if (it.pos.distanceTo(m.pos) < r) { if (this.pickup(m, { kind: it.kind, obj: it }, { silent: true })) n++; }
-      for (const c of this.coins) if (c.active && c.pos.distanceTo(m.pos) < r) { this.pickup(m, { kind: 'coin', obj: c }, { silent: true }); n++; }
+    for (const o of this.souls) {
+      if (o.taken) continue;
+      if (o.pos.distanceTo(s.pos) < r) { n += o.value; this.takeSoul(o, s); }
     }
     return n;
   }
 
-  takeSoul(s) {
-    s.taken = true;
-    this.addSouls(s.owner, s.value);
-    this.game.scene.remove(s.mesh);
-    this.game.effects.puff(s.pos, 0xb48aff);
-    if (s.owner.isPlayer) this.game.hud.status(`+${s.value} alma${s.value > 1 ? 's' : ''}`);
+  takeSoul(o, s) {
+    o.taken = true;
+    this.addSouls(s, o.value);
+    this.game.scene.remove(o.mesh);
+    this.game.effects.rope(o.mesh.position.clone(), s.chest, 0xb48aff);
+    if (s.isPlayer) this.game.hud.status(`+${o.value} alma${o.value > 1 ? 's' : ''}`);
   }
 
-  spawnSoul(owner, pos, value) {
+  spawnSoul(pos, value) {
     const g = this.game;
     const mesh = new THREE.Group();
-    mesh.add(new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 8), new THREE.MeshBasicMaterial({ color: 0xd8c0ff })));
-    const glow = new THREE.Mesh(new THREE.SphereGeometry(0.6, 12, 8), new THREE.MeshBasicMaterial({ color: 0x9a6aff, transparent: true, opacity: 0.35, depthWrite: false }));
+    mesh.add(new THREE.Mesh(new THREE.SphereGeometry(0.26 + value * 0.06, 12, 8), new THREE.MeshBasicMaterial({ color: 0xd8c0ff })));
+    const glow = new THREE.Mesh(new THREE.SphereGeometry(0.55 + value * 0.1, 12, 8), new THREE.MeshBasicMaterial({ color: 0x9a6aff, transparent: true, opacity: 0.35, depthWrite: false }));
     mesh.add(glow);
-    mesh.position.set(pos.x, pos.y + 1.2, pos.z);
+    mesh.position.set(pos.x, pos.y + 1.1, pos.z);
     g.scene.add(mesh);
-    this.souls.push({ owner, pos: mesh.position.clone(), value, until: g.time + MERCHANT.soulLife, mesh, phase: Math.random() * 6 });
+    this.souls.push({ pos: mesh.position.clone(), value, until: g.time + SUMMONER.soulLife, mesh, phase: Math.random() * 6 });
   }
 
   // ------------------------------------------------------------ mortes
@@ -698,18 +790,11 @@ export class Economy {
         addXp(src, XP.assist, 'assistência');
       }
       if (killer && killer.alive && killer.cls && t < killer.st.ironUntil && killer.st.ironPerk === 'B') g.combat.heal(killer, 30, killer);
-      // almas para os mercadores próximos
-      for (const m of g.characters) {
-        if (!m.isMerchant || !m.alive || m === target) continue;
-        if (m.pos.distanceTo(target.pos) > MERCHANT.soulRange) continue;
-        let v = 0;
-        if (target.isMonster) v = target.team !== m.team ? 1 : 0;
-        else v = target.team !== m.team ? 2 : 1;
-        if (v) this.spawnSoul(m, target.pos, v);
-      }
+      // toda morte deixa almas no chão por 30 s (só o Invocador coleta)
+      this.spawnSoul(target.pos, target.isMonster ? 1 : 2);
     }
-    // queda da arma
-    if (!target.isMonster && target.weapon && !target.resurrectEnd) {
+    // queda da arma (as armaduras ficam com o dono)
+    if (!target.isMonster && target.weapon) {
       const it = target.weapon;
       target.weapon = null;
       target.recalcStats();
@@ -727,28 +812,29 @@ export class Economy {
   }
 
   // ------------------------------------------------------------ bots
-  /** Bot ao renascer: vende o que não usa e compra a melhor arma da classe que conseguir pagar. */
+  /** Bot ao renascer: equipa o que tem, vende o resto e compra as melhores peças que conseguir pagar. */
   botShop(ch) {
     for (let i = ch.backpack.length - 1; i >= 0; i--) {
       const it = ch.backpack[i];
-      if (it.cls === ch.classKey && weaponScore(it) > weaponScore(ch.weapon)) { ch.backpack.splice(i, 1); if (ch.weapon) ch.backpack.push(ch.weapon); ch.equip(it); continue; }
+      if (isUpgrade(ch, it)) { ch.backpack.splice(i, 1); const old = ch.equip(it); if (old) ch.backpack.push(old); continue; }
       if (ch.isMerchant) continue;
       this.sell(ch, i);
     }
     const s = this.stalls[ch.team];
-    let best = -1, bs = weaponScore(ch.weapon);
-    s.slots.forEach((sl, i) => {
-      if (sl.item.cls !== ch.classKey || sl.price > ch.gold) return;
-      const sc = weaponScore(sl.item);
-      if (sc > bs) { bs = sc; best = i; }
-    });
-    if (best >= 0) this.buy(ch, best);
+    for (const kind of ['weapon', 'body', 'helmet']) {
+      let best = -1, bs = weaponScore(ch[kind]);
+      s.slots.forEach((sl, i) => {
+        if (itemKind(sl.item) !== kind || !canEquip(ch, sl.item) || sl.price > ch.gold) return;
+        const sc = weaponScore(sl.item);
+        if (sc > bs) { bs = sc; best = i; }
+      });
+      if (best >= 0) this.buy(ch, best);
+    }
   }
 
   // ------------------------------------------------------------ atualização
   update(dt) {
     const g = this.game, t = g.time;
-    // renda passiva
     for (const c of g.characters) {
       if (c.isMonster || !c.cls) continue;
       const k = GOLD.passive + 0.5 * this.workLevel(c.team, 'treasury');
@@ -760,51 +846,57 @@ export class Economy {
         else if (t >= c.channel.until) { const ch = c.channel; c.channel = null; ch.onDone(); }
       }
     }
-    // obras
     for (const team of [0, 1]) if (this.building[team] && t >= this.building[team].doneAt) this.finishWork(team);
-    // moedas e baús
     for (const c of this.coins) {
       if (!c.active) { if (t >= c.respawnAt) { c.active = true; c.amount = this.coinAmount(); c.mesh.visible = true; } continue; }
       c.mesh.rotation.y += dt * 1.5;
     }
     for (const c of this.chests) if (!c.active && t >= c.respawnAt) { c.active = true; c.mesh.visible = c.glow.visible = true; }
-    // itens no chão
+    for (const v of this.veins) {
+      if (!v.active) { if (t >= v.respawnAt) { v.active = true; v.crystals.visible = true; } continue; }
+      v.crystals.rotation.y += dt * 0.4;
+    }
     for (let i = this.ground.length - 1; i >= 0; i--) {
       const it = this.ground[i];
       if (t > it.until) { this.removeGround(it); continue; }
-      if (it.kind === 'weapon') it.mesh.children[0].rotation.z += dt;
+      if (it.kind === 'weapon') it.mesh.children[0].rotation.y += dt;
     }
     // coleta automática dos bots
     for (const c of g.characters) {
-      if (!c.isBot || !c.alive) continue;
+      if (!c.isBot || !c.alive || c.channel) continue;
       if ((c._pickAt || 0) > t) continue;
       c._pickAt = t + 0.3;
       const p = this.nearestPickup(c, 1.9);
-      if (!p) continue;
-      if (p.kind === 'weapon' && c.backpack.length >= c.backpackSize && !(p.obj.item.cls === c.classKey && !c.weapon)) continue;
+      if (!p || p.kind === 'vein') continue;
+      if (p.kind === 'weapon' && c.backpack.length >= c.backpackSize && !isUpgrade(c, p.obj.item)) continue;
       this.pickup(c, p);
     }
-    // almas
-    const showSouls = g.player && g.player.isMerchant;
+    // almas: o Invocador que passar perto coleta
     for (let i = this.souls.length - 1; i >= 0; i--) {
-      const s = this.souls[i];
-      if (s.taken || t > s.until || !s.owner.alive && t > s.until - 6) { if (!s.taken) g.scene.remove(s.mesh); this.souls.splice(i, 1); continue; }
-      s.mesh.visible = showSouls && s.owner === g.player;
-      s.mesh.position.y = s.pos.y + Math.sin(t * 3 + s.phase) * 0.2;
-      if (s.owner.alive && Math.hypot(s.owner.pos.x - s.pos.x, s.owner.pos.z - s.pos.z) < MERCHANT.soulPickup) { this.takeSoul(s); this.souls.splice(i, 1); }
+      const o = this.souls[i];
+      if (o.taken) { this.souls.splice(i, 1); continue; }
+      if (t > o.until) { g.scene.remove(o.mesh); this.souls.splice(i, 1); continue; }
+      o.mesh.position.y = o.pos.y + Math.sin(t * 3 + o.phase) * 0.2;
+      const fade = o.until - t < 5;
+      o.mesh.visible = !fade || Math.sin(t * 12) > 0;
+      for (const s of g.characters) {
+        if (!s.isSummoner || !s.alive || s.souls >= SUMMONER.soulsMax) continue;
+        if (Math.hypot(s.pos.x - o.pos.x, s.pos.z - o.pos.z) < SUMMONER.soulPickup) { this.takeSoul(o, s); break; }
+      }
     }
-    // túmulos
+    // túmulos: 1 alma a cada 30 s para o Invocador que passar
+    const showTomb = g.player && g.player.isSummoner;
     for (const tb of this.tombs) {
       const ready = t >= tb.readyAt;
-      tb.glow.visible = ready && showSouls;
+      tb.glow.visible = ready && showTomb;
       if (tb.glow.visible) tb.glow.scale.setScalar(1 + Math.sin(t * 4) * 0.15);
       if (!ready) continue;
-      for (const m of g.characters) {
-        if (!m.isMerchant || !m.alive) continue;
-        if (Math.hypot(m.pos.x - tb.pos.x, m.pos.z - tb.pos.z) < 2.2) {
-          this.addSouls(m, 1);
-          tb.readyAt = t + MERCHANT.tombEvery;
-          if (m.isPlayer) g.hud.status('+1 alma (túmulo)');
+      for (const s of g.characters) {
+        if (!s.isSummoner || !s.alive) continue;
+        if (Math.hypot(s.pos.x - tb.pos.x, s.pos.z - tb.pos.z) < 2.2) {
+          this.addSouls(s, 1);
+          tb.readyAt = t + SUMMONER.tombEvery;
+          if (s.isPlayer) g.hud.status('+1 alma (túmulo)');
           break;
         }
       }
@@ -817,9 +909,11 @@ export class Economy {
         const s = this.stalls[team];
         const classes = [...new Set(g.characters.filter(c => c.team === team && c.cls).map(c => c.classKey))];
         while (s.slots.length < STALL.slots) {
-          const cls = classes.length && Math.random() < 0.75 ? classes[Math.floor(Math.random() * classes.length)] : CLASS_KEYS[Math.floor(Math.random() * 7)];
-          const it = makeWeapon(cls === 'merchant' ? 'knight' : cls, 0, ATTR_KEYS[Math.floor(Math.random() * ATTR_KEYS.length)], 1);
-          s.slots.push({ item: it, mode: 'normal', price: stallPrice(it, 'normal'), exposedBy: null, at: g.time });
+          const roll = Math.random();
+          const kind = roll < 0.6 ? 'weapon' : roll < 0.8 ? 'body' : 'helmet';
+          const cls = classes.length && Math.random() < 0.75 ? classes[Math.floor(Math.random() * classes.length)] : CLASS_KEYS[Math.floor(Math.random() * CLASS_KEYS.length)];
+          const it = makeItem(kind, cls, 0, ATTR_KEYS[Math.floor(Math.random() * ATTR_KEYS.length)], 1);
+          s.slots.push({ item: it, mode: 'normal', price: stallPrice(it, 'normal'), exposedBy: null, at: t });
           s.dirty = true;
         }
       }
@@ -829,4 +923,4 @@ export class Economy {
   }
 }
 
-export { TOWER, MONSTERS };
+export { TOWER, MONSTERS, ATTR_KEYS };

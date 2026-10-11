@@ -4,57 +4,55 @@ Documento de design. **Implementado no jogo** (ver a seção 7 para as decisões
 
 ## 1. Experiência e níveis
 
-O jogador ganha **XP** durante a partida e sobe de nível. Ao subir, ganha pontos para desbloquear e evoluir skills.
+O jogador ganha **XP** durante a partida e sobe de nível (1 a 10). Cada nível dá **1 ponto**.
 
-| Fonte de XP | XP (proposta) |
+| Fonte de XP | XP |
 |---|---|
 | Abater um bot inimigo | 100 |
 | Abater um esqueleto | 30 (lacaio) a 60 (guerreiro) |
 | Dar um banquete à prisioneira | 50 |
-| Pegar a princesa inimiga caída | 40 |
+| Devolver a princesa inimiga caída | 40 |
 | Resgatar a princesa (entregar no trono) | 300 |
 | Assistência (dano causado a um abatido) | 25 |
-| Arma do mercador vendida na banca | 10 (comum) a 60 (lendária) |
-| Obra do castelo concluída (mercador) | 80 |
-| Ressuscitar um aliado (mercador) | 50 |
+| Destruir uma torre de defesa | 100 |
+| Curar aliados (Sacerdote) | 1 a cada 2 de vida curada |
+| Ressuscitar um aliado (Sacerdote) | 60 |
+| Mercador: fabricar uma peça | 15 (comum) a 60 (lendária) |
+| Mercador: peça vendida na banca | 10 (comum) a 60 (lendária) |
+| Mercador: comprar um item de um jogador | 10 |
+| Mercador: aprimorar | 12 |
+| Mercador: desmanchar | 5 |
+| Mercador: minerar | 8 |
+| Mercador: melhoria da Oficina | 40 |
+| Mercador: obra do castelo concluída | 80 |
 
-O Mercador de Almas quase não luta, então ganha XP principalmente pelo comércio, pelas obras e pela ressurreição.
+O Mercador quase não luta: ganha XP com a fabricação, as trocas, as vendas, a mineração e as obras. As invocações passam o XP dos abates para o Invocador.
 
-- Curva de nível: **nível 1 a 10**, com XP necessário crescendo a cada nível (valores a definir).
-- A cada nível ganho, o jogador recebe **1 ponto de habilidade**.
-- Os pontos são gastos para **desbloquear ou evoluir uma skill** (ver seção 3).
+XP total por nível: 100, 250, 450, 700, 1.000, 1.350, 1.750, 2.200 e 2.700 (nível 10). O Estandarte (obra) dá +10% de XP por nível.
 
 ## 2. Controles de combate (base de todas as classes)
 
 | Botão | Ação | Observação |
 |---|---|---|
-| **Botão esquerdo** | Ataque base | Cada classe tem o seu ataque base (ver seção 4). |
-| **Botão direito** | Bloqueio base | Todas as classes podem bloquear. O bloqueio reduz o dano frontal. Exceção: o Mercador de Almas no modo Invocador (seção 4.8). |
-| **1** a **5** | Ativa a skill do slot correspondente | Os slots 1 a 5 são as skills da classe. |
-| **E** | Interagir | Pegar itens e ouro do chão, abrir a banca do mercador, vender itens ao mercador (seção 5). |
-| **'** (aspas simples) | Troca de modo | Só para o Mercador de Almas (seção 4.8). No teclado ABNT2 é a tecla à esquerda do 1 (`e.code === 'Backquote'`). |
+| **Botão esquerdo** | Ataque base | Cada classe tem o seu. O Invocador segura o botão num inimigo para o **Elo de almas**, que gera almas. |
+| **Botão direito** | Bloqueio | Reduz o dano frontal (Cavaleiro 75%, as outras 50%). Arqueira: mirar com zoom. Invocador: **Marcha** (velocidade para os aliados). |
+| **1** a **5** | Skills da classe | Todas já liberadas desde o nível 1. |
+| **K** | Skills e perks | Escolher perks e evoluir skills. |
+| **I** | Mochila e equipamento | Arma, capacete, peitoral e itens guardados. |
+| **E** | Interagir | Princesa, banquete, pegar itens e ouro, minerar (Mercador), abrir a banca, vender ao mercador. |
 
-Skills e perks não substituem o ataque base e o bloqueio: são ações extras.
+**Princesa:** o **Ladino**, o **Mercador** e o **Invocador** não podem pegar nem carregar a princesa. Eles podem atacar quem a carrega e encostar na princesa inimiga caída para devolvê-la.
 
-**Princesa:** o **Ladino** e o **Mercador de Almas** não podem pegar nem carregar a princesa (nem a prisioneira, nem a princesa caída). Eles podem atacar quem a carrega normalmente.
+**Identificação dos times:** o seu time é sempre o azul. Cada personagem tem um anel no chão, um marcador acima da cabeça e o nome na cor do time, e o modelo fica tingido de azul ou vermelho. A mira fica **vermelha** sobre inimigos e **azul** sobre aliados.
 
 ## 3. Skills e perks
 
-Cada classe tem **5 skills**, numeradas de 1 a 5. Cada skill tem **2 perks**.
+Cada classe tem **5 skills**, nas teclas 1 a 5, **todas liberadas desde o início**. Cada skill tem **2 perks**.
 
-- O jogador só pode escolher **um perk por skill**.
-- Para cada skill, a escolha do perk é feita quando a skill é desbloqueada, e não pode ser trocada até o fim da partida (proposta; a regra pode mudar).
-- Em cada classe, são 5 skills × 2 perks = 10 opções, das quais o jogador usa no máximo 5.
-
-Proposta de desbloqueio das skills (cada uma custa 1 ponto de habilidade):
-
-| Slot | Desbloqueio |
-|---|---|
-| 1 | Nível 1 (já disponível) |
-| 2 | Nível 2 |
-| 3 | Nível 4 |
-| 4 | Nível 6 |
-| 5 | Nível 8 |
+- Cada nível dá 1 ponto. Um ponto escolhe o perk de uma skill (um dos dois). A escolha vale até o fim da partida.
+- Com os 5 perks escolhidos, os pontos seguintes evoluem uma skill para o **Nível II: −20% de recarga**. São 10 pontos no nível 10: 5 perks e 5 evoluções.
+- Ao trocar de classe, a outra classe tem as próprias escolhas (os pontos são por classe; o nível é do jogador).
+- Cada skill tem um **ícone** na barra do HUD e no menu de perks.
 
 ### Como ler as tabelas de skills
 
@@ -71,7 +69,7 @@ Proposta de desbloqueio das skills (cada uma custa 1 ponto de habilidade):
 
 ## 4. Classes
 
-As skills atuais de cada classe viraram o slot de skill correspondente. Os ataques base (botão esquerdo) continuam os mesmos.
+São 10 classes. Os ataques base (botão esquerdo) das classes originais continuam os mesmos; a cura da Maga passou para o Sacerdote.
 
 ### 4.1 Cavaleiro
 
@@ -145,7 +143,7 @@ As skills atuais de cada classe viraram o slot de skill correspondente. Os ataqu
 | Slot | Skill | Dano | Efeito | Duração | Recarga |
 |---|---|---|---|---|---|
 | 1 | Nova gélida (atual) | 16 | Inimigos num raio de 8 m ficam 45% mais lentos. | 3,5 s | 12 s |
-| 2 | Cura (atual) | — | Cura 40 de vida da maga e dos aliados num raio de 10 m. | Instantâneo | 7 s |
+| 2 | Lança de gelo | 35 | Lança rápida de gelo que deixa o alvo 40% mais lento por 2 s. (A cura passou para o Sacerdote.) | Instantâneo | 6 s |
 | 3 | Escudo arcano | — | Escudo que absorve 50 de dano, na maga ou no aliado mirado (alcance 15 m). | 6 s | 15 s |
 | 4 | Teleporte curto | — | Teleporta 10 m na direção da mira. | Instantâneo | 12 s |
 | 5 | Meteoro | 80 no centro, 40 na borda | Meteoro cai no ponto mirado (alcance 30 m, raio 5 m) após 1,2 s. | Instantâneo | 30 s |
@@ -153,7 +151,7 @@ As skills atuais de cada classe viraram o slot de skill correspondente. Os ataqu
 | Slot | Perk A | Perk B |
 |---|---|---|
 | 1 | **Inverno longo:** a lentidão dura 5 s. | **Gelo cortante:** dano 30. |
-| 2 | **Cura maior:** cura 60. | **Renovar:** cura mais 8 por segundo durante 3 s (24 extra). |
+| 2 | **Lança perfurante:** atravessa até 3 inimigos. | **Congelar:** prende o alvo no lugar por 1 s. |
 | 3 | **Escudo reforçado:** absorve 80. | **Espelho:** devolve ao atacante 30% do dano absorvido. |
 | 4 | **Passo rápido:** recarga de 7 s. | **Portal:** leva junto o aliado mais próximo (até 3 m). |
 | 5 | **Cataclismo:** atraso de 2 s e raio de 7 m. | **Chuva de meteoros:** caem três meteoros menores (50 de dano, raio 3,5 m cada). |
@@ -223,152 +221,102 @@ As skills atuais de cada classe viraram o slot de skill correspondente. Os ataqu
 | 4 | **Salto longo:** salta 12 m. | **Duplo salto:** pode ser usado no ar. |
 | 5 | **Hemorragia:** 8 de dano por segundo. | **Instinto:** +25% de dano contra quem está sangrando. |
 
-### 4.8 Mercador de Almas (nova)
+### 4.8 Sacerdote (nova)
 
-Classe de suporte e economia, com dois modos: **Mercador** e **Invocador**. Quase não luta: fabrica e vende armas, melhora o castelo, anda invisível pelo mapa coletando ouro e itens, e usa almas para invocar esqueletos e ressuscitar aliados. Alterna entre os modos com a tecla **'**. Cada modo tem ataque base, botão direito e 5 skills próprios, e gasta um recurso diferente (energia ou almas). As duas barras aparecem no HUD.
+- **Vida:** 110 · **Velocidade:** 6,8 · **Armadura da classe:** 25
+- **Ataque base (esquerdo):** Raio sagrado. Projétil de luz: 12 de dano em inimigos e 10 de cura em aliados feridos que ele atravessa. Recarga 1 s.
+- **Modelo:** Mago (KayKit) sem o chapéu, com cajado e escudo com brasão.
 
-- **Vida:** 100 · **Velocidade:** 6,8 (proposta)
-- **Mochila:** 10 espaços (as outras classes têm 4; ver seção 5.4).
-- É a **única classe que compra itens dos outros jogadores** (seção 5.5).
-- **Não pode pegar a princesa** (seção 2).
-- **Modelo:** Mago (KayKit). Não há bolsa de moedas no pacote, então no modo Mercador ele segura o martelo de ferreiro (`hammer_B`); no modo Invocador, o livro aberto (`spellbook_open`).
+| Slot | Skill | Dano | Efeito | Duração | Recarga |
+|---|---|---|---|---|---|
+| 1 | Cura | — | Cura 40 de vida do sacerdote e dos aliados num raio de 10 m. | Instantâneo | 8 s |
+| 2 | Luz sagrada | 25 (cura 35) | Raio de luz que atravessa os alvos: cura os aliados e fere os inimigos. | Instantâneo | 5 s |
+| 3 | Bênção | — | Escudo que absorve 60 de dano, no aliado mirado (até 20 m) ou no sacerdote. | 6 s | 12 s |
+| 4 | Purificar | — | Remove atordoamento, prisão, lentidão, veneno, sangramento e marcas dos aliados num raio de 10 m, que ficam imunes a eles. | 2 s | 14 s |
+| 5 | Ressurreição | — | Escolhe um aliado morto: ele volta na hora, ao lado do sacerdote, com 50% da vida. | Instantâneo | 90 s |
 
-#### Troca de modo (tecla ')
-
-- A troca leva 0,3 s e tem recarga de 1,5 s. Não dá para trocar durante uma skill canalizada (Fabricar, Aprimorar).
-- As recargas de cada modo correm separadas e continuam correndo no modo que não está ativo.
-- Os esqueletos invocados continuam lutando depois da troca, e a invisibilidade do Véu continua ativa.
-- O HUD mostra o modo ativo, as duas barras e o ouro do cofre do castelo o tempo todo.
-
-#### Sistema de energia (modo Mercador)
-
-A energia vai de **0 a 100** e é a capacidade de produção do mercador. **Não vem de combate.** Ele ganha energia vendendo barato, reciclando e coletando coisas pelo mapa, e gasta fabricando, aprimorando, vendendo caro e construindo obras.
-
-A decisão central é como colocar cada arma à venda na banca:
-
-| Modo de preço | Preço para o comprador | Efeito na energia |
+| Slot | Perk A | Perk B |
 |---|---|---|
-| **Desconto** | 70% do preço base | **Ganha** energia quando a arma é vendida. |
-| **Normal** | 100% do preço base | Nada. |
-| **Sobrecarga** | 150% do preço base | **Gasta** energia na hora de expor (não volta se a arma for retirada). |
+| 1 | **Cura maior:** cura 60. | **Renovar:** cura mais 8 por segundo durante 3 s. |
+| 2 | **Luz forte:** cura 50 e causa 35. | **Luz em cadeia:** cada acerto salta para mais um alvo a até 8 m. |
+| 3 | **Graça:** absorve 90. | **Asas:** o abençoado também ganha +20% de velocidade. |
+| 4 | **Água benta:** também cura 20. | **Clarão:** inimigos no raio ficam 30% mais lentos por 3 s. |
+| 5 | **Milagre:** o aliado volta com a vida cheia. | **Fé:** recarga de 60 s. |
 
-Ou seja: desconto equipa o time mais rápido e enche a energia, mas rende menos ouro para o cofre. Sobrecarga enche o cofre (que paga as obras), mas custa energia.
+### 4.9 Mercador (nova)
 
-**Como ganhar energia**
+Classe de economia. Quase não luta: minera, fabrica armas e armaduras, vende na banca do castelo, compra itens dos outros jogadores, faz obras e compra melhorias na Oficina.
 
-| Fonte | Energia (proposta) |
-|---|---|
-| Regeneração passiva | +0,5 por segundo fora da cidade, +1 por segundo dentro |
-| Pegar um item ou ouro do chão | +3 por coleta |
-| Arma vendida com desconto | Tabela abaixo |
-| Desmanchar uma arma (skill 4) | 50% da energia de fabricação dela |
-| Comprar um item de um jogador | +2 |
-| Alma coletada com a barra de almas cheia | +5 |
+- **Vida:** 110 · **Velocidade:** 6,8 · **Armadura da classe:** 20 · **Mochila:** 10 espaços
+- **Ataque base (esquerdo):** Arremesso de moeda. Dano 12, alcance 20 m, recarga 0,6 s.
+- **Modelo:** Bárbaro (KayKit) com o martelo de ferreiro.
+- **Energia:** 0 a 100. Regenera 0,5 por segundo fora da cidade e 1 dentro. +3 por coleta de ouro ou item, +2 por compra de jogador. A venda com desconto devolve energia.
+- **Minério:** recurso para aprimorar. Vem dos **veios de cristal** pelo mapa (E para minerar, 1,5 s, 2 a 4 minérios; o veio volta em 60 s) e de desmanchar peças.
 
-**Como gastar energia**
-
-| Uso | Energia (proposta) |
-|---|---|
-| Fabricar uma arma (skill 1) | Tabela abaixo |
-| Expor uma arma com sobrecarga | Tabela abaixo |
-| Aprimorar uma arma (skill 3) | 8 × o nível novo (de +2 para +3 custa 24) |
-| Abrir a banca à distância (skill 2) | 5 |
-| Obras do castelo (skill 5) | Seção 6.3 |
-
-**Tabela de fabricação e venda** (preços das armas na seção 5.2)
-
-| Raridade | Energia para fabricar | Tempo de fabricação | Desconto: energia ganha | Sobrecarga: energia gasta |
+| Slot | Skill | Custo | Efeito | Recarga |
 |---|---|---|---|---|
-| Comum | 10 | 2 s | +6 | 5 |
-| Incomum | 18 | 3 s | +10 | 9 |
-| Rara | 30 | 5 s | +16 | 15 |
-| Épica | 45 | 7 s | +24 | 22 |
-| Lendária | 65 | 10 s | +35 | 32 |
-
-- Cada nível de atributo acima de +1 soma **+5 de energia e +1 s** na fabricação. Uma Lendária +5 custa 85 de energia e leva 14 s.
-- O ganho do desconto e o custo da sobrecarga são multiplicados pelo mesmo multiplicador de nível do preço (seção 5.2).
-- Fabricar e vender com desconto sempre dá prejuízo de energia, então não existe ciclo infinito. A energia líquida vem da regeneração, das coletas, da reciclagem e das compras de jogadores.
-
-**Exemplo de ciclo:** no começo da partida, o mercador sai invisível pelo mapa pegando ouro e armas caídas (+3 de energia por coleta). Volta para a cidade, desmancha o que não serve, fabrica armas comuns e incomuns e vende com desconto, para equipar o time rápido e recuperar energia. No meio da partida, com energia sobrando e nível mais alto, fabrica armas raras e épicas e expõe com sobrecarga, enchendo o cofre para pagar as obras do castelo.
-
-#### Barra de almas (modo Invocador)
-
-Vai de 0 a **10 almas**. É o recurso das invocações e da ressurreição.
-
-| Fonte de almas | Almas (proposta) |
-|---|---|
-| Elo de almas (botão direito) conectado num inimigo | 0,3 por segundo |
-| Bot inimigo morre a até 15 m do invocador | 2 |
-| Esqueleto morre a até 15 m do invocador | 1 |
-| Aliado do time morre a até 15 m do invocador | 1 |
-| Túmulos do mapa (pontos fixos, a definir) | 1 a cada 30 s, para quem passar por cima |
-
-- Quando algo morre, a alma fica flutuando no local por **8 s**. O invocador precisa passar por cima (até 2 m) ou usar a skill Colheita de almas.
-- Só o Mercador de Almas vê e coleta almas.
-- Almas coletadas com a barra cheia viram 5 de energia cada.
-
-#### Modo Mercador
-
-- **Ataque base (esquerdo):** Arremesso de moeda. Dano 12, alcance 20 m, recarga 0,6 s. Não gera energia.
-- **Botão direito:** bloqueio base.
-
-| Slot | Skill | Custo | Dano | Efeito | Duração | Recarga |
-|---|---|---|---|---|---|---|
-| 1 | Fabricar | Energia da tabela | — | Abre o menu de fabricação: escolhe a classe da arma, a raridade, o atributo secundário e o nível (+1 a +5). O mercador fica parado fabricando; se levar dano, cancela e a energia volta. A arma vai para a mochila. | Tempo da tabela (+50% fora da cidade) | 1 s |
-| 2 | Banca à distância | 5 de energia | — | Abre a banca do castelo de qualquer lugar do mapa: expor armas da mochila, retirar e escolher o modo de preço. Perto da banca (até 6 m), o acesso pela tecla E é livre e não custa energia. | Instantâneo | 20 s |
-| 3 | Aprimorar | 8 × nível novo | — | Sobe +1 o atributo de uma arma da mochila ou da arma equipada de um aliado a até 4 m (máximo +5). Serve para recuperar armas que perderam nível ao cair. | 2 s (canalizado) | 4 s |
-| 4 | Desmanchar | — | — | Destrói uma arma da mochila e devolve 50% da energia de fabricação dela. | Instantâneo | 1 s |
-| 5 | Obras do castelo | Ouro do cofre + energia | — | Abre o menu de obras (seção 6.3). Só funciona dentro da cidade. | A obra fica pronta em 20 s | 5 s |
-
-Raridades que o mercador consegue fabricar, pelo nível dele: comum (nível 1), incomum (2), rara (4), épica (6) e lendária (8).
+| 1 | Fabricar | Energia: arma 20, capacete 14, peitoral 18 | Escolhe o tipo (arma de uma classe, capacete ou peitoral) e o atributo. **A raridade é sorteada** (tabela abaixo). A peça sai com +1. Fica parado 3 s (+50% fora da cidade); dano ou movimento cancela e devolve a energia. | 1 s |
+| 2 | Banca à distância | 5 de energia | Abre a banca do castelo de qualquer lugar. Perto da banca, a tecla E é livre. | 20 s |
+| 3 | Aprimorar | Energia 8 × nível novo e minério igual ao nível novo | Sobe +1 o atributo de uma peça da mochila ou de um aliado a até 4 m (máximo +5). Canalizado, 2 s. | 4 s |
+| 4 | Desmanchar | — | Destrói uma peça e devolve 50% da energia de fabricação e 1 + raridade de minério. | 1 s |
+| 5 | Obras do castelo | Ouro do cofre + energia | Abre as obras e a Oficina. Só dentro da cidade. | 5 s |
 
 | Slot | Perk A | Perk B |
 |---|---|---|
 | 1 | **Mestre ferreiro:** fabrica 30% mais rápido. | **Economia:** fabricar custa 20% menos energia. |
-| 2 | **Mascate:** recarga de 8 s e não custa energia. | **Vitrine:** a banca passa de 8 para 12 espaços de exposição. |
-| 3 | **Ourives:** custa 30% menos energia. | **Refino:** também pode subir a raridade de uma arma, mantendo o atributo (custa a energia de fabricação da raridade nova). |
-| 4 | **Reciclagem:** devolve 75% da energia. | **Sucata valiosa:** além da energia, rende ao cofre 25% do preço base da arma em ouro. |
+| 2 | **Mascate:** recarga de 8 s e não custa energia. | **Vitrine:** +8 espaços de exposição na banca. |
+| 3 | **Ourives:** 30% menos energia e 1 minério a menos. | **Refino:** também pode subir a raridade de uma peça (energia e 3 minérios). |
+| 4 | **Reciclagem:** devolve 75% da energia e +1 minério. | **Sucata valiosa:** também rende ao cofre 25% do preço base em ouro. |
 | 5 | **Mestre de obras:** obras custam 20% menos ouro. | **Mutirão:** obras ficam prontas na hora. |
 
-#### Modo Invocador
+**Chance de raridade ao fabricar.** O mercador não escolhe a raridade. No nível 1 ele fabrica de Comum a Rara (cerca de 61%, 29% e 10%). Cada nível aumenta a chance das raridades melhores. Épica e Lendária só saem depois das Forjas da Oficina.
 
-- **Ataque base (esquerdo):** Raio sombrio. Dano 14, alcance 25 m, recarga 0,7 s.
-- **Botão direito, fora da cidade: Elo de almas.** Um raio liga o mercador ao inimigo mirado, até 15 m. Enquanto estiver ligado, gera **0,3 alma por segundo**. Não causa dano. Quebra se o alvo passar de 15 m ou sair da linha de visão.
-- **Botão direito, dentro da cidade: Marcha.** Aliados a até 15 m (incluindo o mercador) ganham **+40% de velocidade de movimento por 15 s**. Custa 1 alma, recarga de 30 s.
-- O ataque base e o Elo de almas contam como ataque e quebram a invisibilidade do Véu.
-- Os aliados invocados são **esqueletos** (modelos KayKit, mesmos valores de `MONSTERS` em `src/config.js`), mas lutam pelo time do invocador. Somem quando o tempo acaba ou quando morrem.
+**Oficina** (no menu da skill 5, paga com o ouro do cofre, vale para o time):
 
-| Slot | Skill | Custo | Dano | Efeito | Duração | Recarga |
-|---|---|---|---|---|---|---|
-| 1 | Véu | — | — | Fica invisível até atacar. Pegar ouro, itens e almas, usar Colheita de almas e invocar não quebram o Véu. Ao levar dano, pisca visível por 0,5 s, mas continua invisível. | Até atacar | 6 s (conta a partir do fim da invisibilidade) |
-| 2 | Invocar lacaio | 1 alma | 12 por golpe | Invoca um Esqueleto Lacaio (70 de vida). Máximo de 3 lacaios ao mesmo tempo. | 25 s | 6 s |
-| 3 | Invocar guerreiro | 3 almas | 22 por golpe | Invoca um Esqueleto Guerreiro (130 de vida). Máximo de 1. | 30 s | 15 s |
-| 4 | Colheita de almas | — | — | Puxa todas as almas soltas num raio de 15 m. | Instantâneo | 10 s |
-| 5 | Ressurreição | 10 almas | — | Escolhe um aliado morto (esperando para renascer). Ele volta na hora, ao lado do mercador, com +20% de velocidade de ataque. Quando o tempo acaba, ele morre e renasce no castelo **sem tempo de espera**, mantendo os +20% de velocidade de ataque por mais 15 s. | 60 s, mais 15 s de bônus após renascer | 90 s |
+| Melhoria | Efeito | Custo |
+|---|---|---|
+| Forja de mestre | Libera a raridade Épica. | 500 |
+| Forja lendária | Libera a raridade Lendária (precisa da Forja de mestre). | 1.000 |
+| Sorte do ferreiro I, II e III | Cada uma aumenta a chance de raridades melhores (equivale a 3 níveis do mercador). | 250, 500 e 800 |
+| Expositores extras | +6 espaços de exposição na banca. | 300 |
 
-Detalhes da Ressurreição (proposta):
-- Se o ressuscitado morrer antes dos 60 s, o resultado é o mesmo: renasce sem espera, com os 15 s de bônus.
-- A morte no fim da ressurreição não derruba a arma (seção 5.3).
+Com tudo comprado e nível 10, as chances ficam perto de 4% Comum, 39% Incomum, 39% Rara, 14% Épica e 4,5% Lendária.
+
+### 4.10 Invocador (nova)
+
+Gera almas e invoca esqueletos que **avançam sozinhos contra o inimigo**. As invocações não têm limite de tempo: o limite é de quantidade.
+
+- **Vida:** 100 · **Velocidade:** 6,8 · **Armadura da classe:** 10
+- **Ataque base (esquerdo, segurar):** **Elo de almas.** Liga num inimigo a até 15 m e gera 0,5 alma por segundo. Não causa dano.
+- **Botão direito:** **Marcha.** Aliados a até 15 m (incluindo as invocações) ganham +40% de velocidade por 12 s. Recarga de 25 s.
+- **Almas:** até 15. Toda morte deixa almas no chão (2 de personagens, 1 de esqueletos) por **30 s**. **Só o Invocador coleta**, passando por cima ou com a Colheita. Os túmulos do mapa dão 1 alma a cada 30 s.
+- **Modelo:** Ladino encapuzado (KayKit) com o cajado de esqueleto e o livro aberto.
+
+| Slot | Skill | Custo | Dano | Efeito | Recarga |
+|---|---|---|---|---|---|
+| 1 | Invocar lacaio | 1 alma | 12 por golpe | Esqueleto Lacaio (70 de vida). Máximo de 4. | 3 s |
+| 2 | Invocar guerreiro | 3 almas | 22 por golpe | Esqueleto Guerreiro (130 de vida). Máximo de 2. | 8 s |
+| 3 | Invocar arqueiro | 2 almas | 14 por flecha | Esqueleto Arqueiro (65 de vida, alcance 22 m). Máximo de 3. | 6 s |
+| 4 | Invocar mago | 3 almas | 18 por raio | Esqueleto Mago (75 de vida, alcance 18 m). Máximo de 2. | 8 s |
+| 5 | Colheita de almas | — | — | Puxa todas as almas no chão num raio de **50 m**. | 12 s |
 
 | Slot | Perk A | Perk B |
 |---|---|---|
-| 1 | **Passos de fantasma:** +20% de velocidade de movimento enquanto invisível. | **Elo oculto:** o Elo de almas não quebra a invisibilidade. |
-| 2 | **Ninhada:** invoca dois lacaios, cada um com 60% da vida. | **Ossos duros:** o lacaio tem +50% de vida (105). |
-| 3 | **Campeão:** o guerreiro tem 200 de vida. | **Necromante:** invoca um Esqueleto Mago (ataque à distância, 18 de dano, alcance 18 m). |
-| 4 | **Grande colheita:** raio de 25 m. | **Saqueador:** também puxa ouro e itens soltos no raio (cada um conta como coleta: +3 de energia). |
-| 5 | **Vida longa:** o ressuscitado fica 90 s. | **Pacto barato:** custa 8 almas. |
+| 1 | **Ninhada:** dois lacaios de uma vez, com 60% da vida. | **Ossos duros:** +50% de vida (105). |
+| 2 | **Campeão:** 200 de vida. | **Fúria óssea:** +30% de dano. |
+| 3 | **Flechas de fogo:** as flechas explodem (+8 num raio de 2 m). | **Olho de águia:** alcance de 30 m e +20% de dano. |
+| 4 | **Gelo:** os raios deixam o alvo 30% mais lento por 2 s. | **Explosão:** os raios explodem num raio de 2,5 m. |
+| 5 | **Banquete de almas:** cada alma colhida cura 15 do invocador e das invocações próximas. | **Ímpeto:** as invocações ganham +30% de velocidade e de dano por 8 s. |
 
-#### Progressão do Mercador de Almas
+O Ossuário (obra) soma +1 no limite de cada tipo de invocação por nível.
 
-A classe tem 10 skills (5 por modo), mas recebe os mesmos pontos de habilidade que as outras. Proposta: **cada ponto desbloqueia o mesmo slot nos dois modos** (por exemplo, o ponto do nível 2 libera Banca à distância e Invocar lacaio). O perk é escolhido separado para cada skill. O equilíbrio vem de a classe quase não ter dano e depender de dois recursos.
-
-## 5. Economia: ouro, armas e mochila
+## 5. Economia: ouro, armas, armaduras e mochila
 
 ### 5.1 Ouro
 
-Cada jogador tem o seu próprio ouro, usado para comprar armas na banca do próprio castelo. O ouro não ocupa espaço na mochila.
+Cada jogador tem o seu próprio ouro, usado para comprar armas e armaduras na banca do próprio castelo. O ouro não ocupa espaço na mochila.
 
-| Fonte de ouro | Ouro (proposta) |
+| Fonte de ouro | Ouro |
 |---|---|
 | Renda passiva | +1 por segundo |
 | Moedas no chão (pontos fixos pelo mapa, voltam a cada 45 s) | 10 a 25 |
@@ -376,7 +324,7 @@ Cada jogador tem o seu próprio ouro, usado para comprar armas na banca do próp
 | Abater um bot inimigo | 30 |
 | Abater um esqueleto | 10 |
 | Resgatar a princesa | 150 para cada jogador do time |
-| Vender uma arma ao mercador | 50% do preço base (seção 5.5) |
+| Vender uma peça ao mercador | 50% do preço (seção 5.6) |
 
 O ouro que o próprio mercador pega vai direto para o cofre do castelo (seção 6.1).
 
@@ -384,7 +332,7 @@ O ouro que o próprio mercador pega vai direto para o cofre do castelo (seção 
 
 - Cada classe começa com a **arma básica** (a atual), sem bônus. Ela nunca cai.
 - O mercador fabrica armas de qualquer classe. O jogador só equipa armas da própria classe; as outras ficam na mochila e servem para vender ao mercador.
-- Cada arma tem uma **raridade**, que dá bônus de dano, e um **atributo secundário** com nível de **+1 a +5**.
+- Cada arma tem uma **raridade** (sorteada na fabricação, seção 4.9), que dá bônus de dano, e um **atributo secundário** com nível de **+1 a +5** (sobe com Aprimorar, que gasta energia e minério).
 
 | Raridade | Cor do brilho | Bônus de dano | Preço base |
 |---|---|---|---|
@@ -403,26 +351,43 @@ Atributo secundário (escolhido pelo mercador na fabricação):
 | Velocidade de movimento | +2% | +10% |
 | Roubo de vida | 2% do dano causado | 10% |
 | Recarga das skills | −3% | −15% |
+| Armadura extra | +4 | +20 |
 
 **Preço final = preço base × multiplicador de nível:** +1 ×1,0 · +2 ×1,25 · +3 ×1,5 · +4 ×1,75 · +5 ×2,0. Por exemplo, uma Épica +3 custa 400 × 1,5 = 600 de ouro, e uma Lendária +5 custa 1.600. O modo de preço da banca (desconto, normal ou sobrecarga) é aplicado em cima desse valor.
 
-### 5.3 Morte e queda da arma
+### 5.3 Armaduras: capacete e peitoral
 
-- Ao morrer, o jogador **derruba a arma equipada** no chão. Ela **perde 1 nível de raridade e 1 nível de atributo**. Por exemplo, uma Épica +3 cai como Rara +2.
-- Uma arma +1 continua +1 e só perde a raridade.
-- Uma arma comum não tem raridade abaixo: vira uma pilha de 25 de ouro no chão.
-- A arma fica no chão por 30 s. Qualquer jogador, de qualquer time, pode pegar com E.
-- O jogador renasce com a arma básica.
-- A mochila e o ouro não caem (proposta).
-- A morte no fim da Ressurreição do mercador não derruba a arma.
+Todos os personagens têm **armadura**, que reduz o dano recebido: **redução = armadura / (armadura + 100)**. Com 50 de armadura, o dano cai 33%; com 100, cai 50%.
 
-### 5.4 Mochila
+- **Armadura da classe:** Cavaleiro 45, Alabardeiro 40, Bárbaro 30, Espadachim 25, Sacerdote 25, Mercador 20, Ladino 15, Arqueira 15, Maga 10, Invocador 10.
+- **Capacete e peitoral:** todo mundo começa com as peças básicas (capacete 5, peitoral 10). As peças do mercador somam mais, conforme a raridade:
 
-- **4 espaços** para todas as classes e **10 para o Mercador de Almas**.
-- A arma equipada e o ouro não ocupam espaço.
-- Guarda armas pegas do chão ou compradas na banca. Uma tecla (a definir, por exemplo Tab) abre a mochila para trocar a arma equipada.
+| Raridade | Capacete | Peitoral |
+|---|---|---|
+| Comum | 8 | 15 |
+| Incomum | 12 | 22 |
+| Rara | 17 | 30 |
+| Épica | 23 | 40 |
+| Lendária | 30 | 52 |
 
-### 5.5 Vender itens ao mercador
+- Capacete e peitoral servem para **qualquer classe** e também têm atributo secundário de +1 a +5 (inclusive o novo atributo **Armadura extra**, +4 por nível).
+- O **capacete** também reduz o bônus do tiro na cabeça: 1,5× sem capacete, até 1,15× com um capacete forte.
+- Ao morrer, só a arma cai. O capacete e o peitoral ficam com o dono.
+- Os preços de capacete e peitoral são 60% e 80% do preço de uma arma da mesma raridade.
+
+### 5.4 Morte e queda da arma
+
+- Ao morrer, o jogador **derruba a arma equipada** no chão. Ela **perde 1 nível de raridade e 1 nível de atributo**. Uma arma comum vira uma pilha de 25 de ouro.
+- A arma fica no chão por 30 s. Qualquer jogador pode pegar com E.
+- O jogador renasce com a arma básica. A mochila, o ouro e as armaduras não caem.
+
+### 5.5 Mochila
+
+- **4 espaços** para todas as classes e **10 para o Mercador**.
+- As peças equipadas (arma, capacete, peitoral) e o ouro não ocupam espaço.
+- A tecla **I** abre a mochila para trocar as peças equipadas.
+
+### 5.6 Vender itens ao mercador
 
 - Os jogadores só podem vender itens para o **mercador do próprio time**, por **50% do preço base** da arma no estado atual (já contando a queda de nível).
 - Para vender, é preciso chegar a até 4 m do mercador ou da banca e apertar E. Na banca, a venda funciona mesmo sem o mercador por perto: o item vai para o depósito da banca.
@@ -437,18 +402,18 @@ Atributo secundário (escolhido pelo mercador na fabricação):
 
 ### 6.1 Cofre
 
-- Cada castelo tem um cofre de ouro compartilhado pelo time. Começa com **200 de ouro**.
-- **Entra no cofre:** o ouro das armas vendidas na banca e o ouro que o mercador pega no mapa.
-- **Sai do cofre:** a compra de itens dos jogadores (seção 5.5) e as obras (seção 6.3).
+- Cada castelo tem um cofre de ouro compartilhado pelo time. Começa com **250 de ouro**.
+- **Entra no cofre:** o ouro das peças vendidas na banca e o ouro que o mercador pega no mapa.
+- **Sai do cofre:** a compra de itens dos jogadores (seção 5.6), as obras (seção 6.3) e a Oficina (seção 4.9).
 
 ### 6.2 Banca do mercador
 
 - Fica num lugar fixo dentro da cidade de cada time, perto do trono (posição a definir no mapa).
-- Tem **8 espaços de exposição** e um **depósito de 20 espaços** para os itens que os jogadores vendem quando o mercador não está.
-- O mercador expõe armas da mochila e escolhe o modo de preço de cada uma (seção 4.8).
+- Tem **12 espaços de exposição** (+8 com o perk Vitrine, +6 com os Expositores extras da Oficina) e um **depósito de 30 espaços** para os itens que os jogadores vendem quando o mercador não está.
+- O mercador expõe peças da mochila e escolhe o modo de preço de cada uma: Desconto (70% do preço, ganha energia na venda), Normal (100%) ou Sobrecarga (150%, gasta energia ao expor).
 - Os jogadores do time abrem a banca com E e compram com o próprio ouro. Inimigos não podem usar a banca.
 - Funciona sem o mercador por perto.
-- Bots: ao renascer, compram a melhor arma da própria classe que conseguem pagar.
+- Bots: ao renascer, compram a melhor arma, capacete e peitoral que conseguem pagar.
 
 ### 6.3 Obras
 
@@ -457,7 +422,7 @@ O mercador abre o menu de obras com a skill 5 do modo Mercador, dentro da cidade
 | Obra | Efeito por nível | Níveis | Custo por nível (ouro do cofre + energia) |
 |---|---|---|---|
 | Quartel | Tempo de renascimento −1 s (de 7 s até 4 s). | 3 | 250 + 20 · 500 + 35 · 900 + 50 |
-| Ossuário | +1 no limite de lacaios do invocador. No nível 2, também +1 no limite de guerreiros. | 2 | 300 + 25 · 700 + 45 |
+| Ossuário | +1 no limite de cada tipo de invocação do Invocador. | 2 | 300 + 25 · 700 + 45 |
 | Estandarte | +10% de XP para todo o time. | 3 | 300 + 20 · 600 + 35 · 1000 + 50 |
 | Torres de defesa | Nível 1: uma torre (15 de dano a cada 1,5 s, alcance 22 m, 300 de vida). Nível 2: duas torres. Nível 3: 25 de dano e 500 de vida. | 3 | 400 + 30 · 700 + 45 · 1100 + 60 |
 | Tesouraria | +0,5 de ouro por segundo para cada jogador do time. | 2 | 350 + 25 · 800 + 45 |
@@ -466,24 +431,21 @@ O mercador abre o menu de obras com a skill 5 do modo Mercador, dentro da cidade
 
 ## 7. Decisões da implementação
 
-Respostas usadas para os pontos que estavam em aberto. Todas podem ser mudadas depois.
-
 | Ponto | Decisão |
 |---|---|
-| Botão direito | Bloqueio para todas as classes. O Cavaleiro anula 75% do dano frontal (escudo); as outras, 50%. A Arqueira usa o botão direito para mirar com zoom, como na seção 4.3. Chute, Cura e Esquiva viraram skills. |
+| Botão direito | Bloqueio para todas as classes (Cavaleiro 75% do dano frontal, as outras 50%). Arqueira: mirar. Invocador: Marcha. |
+| Skills e perks | As 5 skills já vêm liberadas. Cada nível dá 1 ponto para um perk; com os 5 perks escolhidos, os pontos evoluem skills para o Nível II (−20% de recarga). |
 | XP | Vale só dentro da partida. |
-| Pontos que sobram | Os pontos dos níveis 3, 5, 7, 9 e 10 evoluem uma skill já liberada para o **Nível II: −20% de recarga**. Assim os 10 pontos fecham: 5 desbloqueios + 5 evoluções. |
-| Perks | Definitivos até o fim da partida. Ao trocar de classe, a outra classe tem as próprias escolhas (os pontos são por classe; o nível é do jogador). |
-| Esqueletos invocados | Lutam pelo time do dono, atacam quem ataca o dono e seguem o dono quando não há inimigos. O XP e o ouro dos abates deles vão para o dono. |
-| Energia e almas | Não zeram ao morrer. |
-| Mochila e ouro | Não caem ao morrer. Só a arma equipada cai. |
-| Time sem mercador | A banca recebe armas comuns +1 de um vendedor fixo a cada 15 s. |
-| Dois mercadores no mesmo time | Dividem o cofre e a banca. |
-| Bots | Com 6 ou mais jogadores por time, um bot de cada time é Mercador de Almas (no time azul, só se você não escolher o Mercador). |
-| Ladino e Mercador | Não pegam a princesa. Podem encostar na princesa inimiga caída para devolvê-la à masmorra. |
-| Troca de modo | Tecla `'` (Backquote, à esquerda do 1 no ABNT2). A tecla **Q** também funciona, para teclados em que `'` fica em outro lugar. |
-| Golpe pesado (perk Carregado) | O preparo passa a 1 s e o golpe causa 110, sem precisar segurar a tecla. |
-| Muralha | Usar a skill de novo encerra a postura antes dos 4 s. |
-| Fabricar e Aprimorar | Andar também cancela a canalização (a energia volta), além de levar dano. |
-| Mapa | A banca fica à esquerda do pátio, entre o quartel e o trono. Cada lado tem 8 pontos de moedas nas rotas, 2 túmulos e 1 baú no acampamento de esqueletos (100 de ouro, volta a cada 120 s). As torres de defesa ficam logo atrás do portão principal. |
-| Tecla da mochila | **I** (o Tab continua sendo o placar). Skills e perks: **K**. |
+| Mercador e Invocador | Viraram duas classes separadas (antes era o Mercador de Almas com dois modos). |
+| Cura | Saiu da Maga e virou a classe Sacerdote. A Maga ganhou a Lança de gelo. |
+| Raridade | Sorteada na fabricação. O nível do mercador e a Oficina aumentam as chances; as Forjas liberam Épica e Lendária. |
+| Aprimorar | Custa energia e minério. O minério vem dos veios de cristal (E para minerar, só o Mercador) e de desmanchar peças. |
+| Almas | Toda morte deixa almas no chão por 30 s. Só o Invocador coleta (passando por cima, pelos túmulos ou com a Colheita, raio de 50 m). |
+| Invocações | Sem limite de tempo; limite de quantidade por tipo. Avançam pela rota até o castelo inimigo, lutando com quem encontram. Continuam vivas se o Invocador morrer. |
+| Armaduras | Capacete e peitoral para todas as classes; só a arma cai ao morrer. |
+| Bots à distância | A Arqueira bot tensiona o arco por 0,5 a 1,1 s antes de soltar e pausa entre os tiros; os outros bots à distância também pausam entre os disparos. O tempo depende da dificuldade. |
+| Times | Azul é sempre o seu time. Anel no chão, marcador, nome e tinta na cor do time; mira vermelha sobre inimigos e azul sobre aliados. |
+| Mochila e ouro | Não caem ao morrer. |
+| Time sem mercador | A banca recebe peças comuns de um vendedor fixo a cada 15 s. |
+| Bots | Com 6 ou mais jogadores por time, um bot de cada time é Mercador (no time azul, só se você não escolher o Mercador). Sacerdotes e Invocadores aparecem entre os bots. |
+| Mapa | Banca à esquerda do pátio. Em cada metade: 8 pontos de moedas, 2 túmulos, 5 veios de minério e 1 baú no acampamento de esqueletos. Torres atrás do portão principal. |

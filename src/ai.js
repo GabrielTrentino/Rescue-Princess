@@ -1,12 +1,11 @@
-// Inteligência dos bots (aliados e inimigos), do bot Mercador de Almas, dos esqueletos e das invocações.
+// Inteligência dos bots (aliados e inimigos), dos bots Mercador, Invocador e Sacerdote, dos esqueletos e das invocações.
 import * as THREE from 'three';
-import { DIFFICULTY, SETTINGS, MAX_FAT, CLASSES, RARITY, ATTR_KEYS, WORKS, WORK_KEYS, MERCHANT } from './config.js';
+import { DIFFICULTY, SETTINGS, MAX_FAT, ATTR_KEYS, FORGE, FORGE_KEYS, SUMMONER } from './config.js';
 import { hostile } from './combat.js';
-import { skillList } from './skills.js';
-import { perkOf, isUnlocked } from './progression.js';
+import { skillList, SKILL_BY_ID } from './skills.js';
+import { perkOf } from './progression.js';
 import { canCarry } from './objectives.js';
-import { craftEnergy, maxRarityFor, workCost, upgradeEnergy } from './economy.js';
-import { SKILL_BY_ID } from './skills.js';
+import { craftEnergy, workCost, upgradeCost, itemKind, isUpgrade } from './economy.js';
 
 function angleDiff(a, b) { let d = a - b; return Math.atan2(Math.sin(d), Math.cos(d)); }
 function dist2d(a, b) { return Math.hypot(a.x - b.x, a.z - b.z); }
@@ -66,7 +65,7 @@ class Steering {
   }
 }
 
-const RANGED = new Set(['ranger', 'mage', 'merchant']);
+const RANGED = new Set(['ranger', 'mage', 'merchant', 'priest', 'summoner']);
 
 // ======================================================================= bots
 export class BotAI {
@@ -87,6 +86,8 @@ export class BotAI {
     this.blockUntil = 0;
     this.skillAt = 0;
     this.econAt = 2 + Math.random() * 2;
+    this.nextShotAt = 0;
+    this.draw = null;
   }
 
   get game() { return this.ch.game; }
@@ -100,7 +101,7 @@ export class BotAI {
     }
   }
 
-  reset() { this.target = null; this.nav.setGoal(null); this.mode = 'idle'; this.patrol = null; this.lane = undefined; this.rallied = false; this.rallyStart = 0; }
+  reset() { this.target = null; this.nav.setGoal(null); this.mode = 'idle'; this.patrol = null; this.lane = undefined; this.rallied = false; this.rallyStart = 0; this.draw = null; this.roam = null; }
 
   canSee(o, range) {
     const ch = this.ch, g = this.game;
@@ -141,7 +142,7 @@ export class BotAI {
       const dt = dist2d(this.target.pos, ch.pos);
       if (dt < 34 && this.canSee(this.target, 34) && bestScore > dt - 4) best = this.target;
     }
-    if (best !== this.target) this.reactUntil = g.time + this.diff.botReaction;
+    if (best !== this.target) { this.reactUntil = g.time + this.diff.botReaction; this.draw = null; }
     this.target = best;
   }
 
@@ -169,6 +170,22 @@ export class BotAI {
       if (captive.state === 'captive' && captive.fat < MAX_FAT) { this.mode = 'feed'; return T.copy(captive.pos); }
     }
     if (this.role === 'merchant') return this.merchantGoal(T);
+    if (this.role === 'support') {
+      // sacerdote: acompanha o aliado mais importante (quem carrega a princesa, ou o atacante mais próximo)
+      let best = null, bd = 1e9;
+      for (const o of g.characters) {
+        if (!o.alive || o.team !== ch.team || o === ch || o.isMonster || o.isMerchant) continue;
+        let d = dist2d(o.pos, ch.pos);
+        if (o.carrying) d -= 200;
+        if (o.ai && o.ai.role === 'attacker') d -= 20;
+        if (d < bd) { bd = d; best = o; }
+      }
+      if (best) {
+        this.mode = best.carrying ? 'escort' : 'follow';
+        const behind = best.forward().multiplyScalar(-5);
+        return T.copy(best.pos).add(behind);
+      }
+    }
     if (own.state === 'dropped' && carrier) {
       const d = dist2d(own.pos, ch.pos);
       if (this.role !== 'defender' || d < 40) { this.mode = 'grab'; return T.copy(own.pos); }
@@ -224,16 +241,20 @@ export class BotAI {
   merchantGoal(T) {
     const g = this.game, ch = this.ch, E = g.economy;
     this.mode = 'patrol';
-    // sai para colher almas nos túmulos do próprio lado quando a banca está cheia e sobra energia
+    // sai para minerar no veio mais próximo do próprio lado quando falta minério
     if (this.roam) {
-      if (g.time > this.roamUntil || ch.souls >= 8 || dist2d(this.roam, ch.pos) < 2) this.roam = null;
-      else { this.mode = 'roam'; return T.copy(this.roam); }
+      if (g.time > this.roamUntil || !this.roam.active || ch.ore >= 8) this.roam = null;
+      else { this.mode = 'roam'; return T.copy(this.roam.pos); }
     }
-    const stallFull = E.stalls[ch.team].slots.length >= E.stallSlotsMax(ch.team);
-    if (stallFull && ch.energy > 50 && ch.souls < 6 && isUnlocked(ch, 2) && Math.random() < 0.03) {
+    if (ch.ore < 3 && Math.random() < 0.05) {
       const side = ch.team === 0 ? -1 : 1;
-      const tombs = E.tombs.filter(tb => Math.sign(tb.pos.z) === side && g.time >= tb.readyAt - 10);
-      if (tombs.length) { this.roam = tombs[Math.floor(Math.random() * tombs.length)].pos.clone(); this.roamUntil = g.time + 60; this.mode = 'roam'; return T.copy(this.roam); }
+      let best = null, bd = 1e9;
+      for (const v of E.veins) {
+        if (!v.active || Math.sign(v.pos.z) !== side) continue;
+        const d = dist2d(v.pos, ch.pos);
+        if (d < bd) { bd = d; best = v; }
+      }
+      if (best && bd < 120) { this.roam = best; this.roamUntil = g.time + 50; this.mode = 'roam'; return T.copy(best.pos); }
     }
     const s = E.stalls[ch.team].pos;
     return T.set(s.x + (ch.team === 0 ? 2.5 : -2.5), 0, s.z + (ch.team === 0 ? 3 : -3));
@@ -250,8 +271,9 @@ export class BotAI {
     }
     if (ch.isMerchant) {
       this.merchantEconomy();
-      if (this.mode === 'roam' && ch.mode === 'merchant' && ch.modeCd <= 0 && isUnlocked(ch, 2)) g.combat.switchMode(ch);
+      if (this.roam && this.roam.active && dist2d(this.roam.pos, ch.pos) < 2.8 && !ch.channel) g.economy.mine(ch, this.roam);
     }
+    if (ch.classKey === 'priest') this.priestRevive();
 
     const own = g.objectives.princessOf(ch.team);
     if (!ch.carrying && canCarry(ch) && (own.state === 'captive' || own.state === 'dropped') && dist2d(own.pos, ch.pos) < 2.4) {
@@ -278,8 +300,14 @@ export class BotAI {
     } else {
       ch.blocking = false;
       g.combat.endLink(ch);
-      wish = this.nav.steer(this.mode === 'patrol' ? 3 : 1.5);
+      this.draw = null;
+      wish = this.nav.steer(this.mode === 'patrol' || this.mode === 'follow' ? 3 : 1.5);
       this.useSkills(null, 99, false);
+      // invocador: marcha quando o time avança junto
+      if (ch.isSummoner && (ch.cd.march || 0) <= 0 && (this.mode === 'attack' || this.mode === 'escort') && Math.random() < 0.01) {
+        let n = 0; for (const o of g.characters) if (o.alive && o.team === ch.team && !o.isMonster && dist2d(o.pos, ch.pos) < 12) n++;
+        if (n >= 3) g.combat.march(ch);
+      }
     }
 
     if (wish) {
@@ -304,8 +332,18 @@ export class BotAI {
     }
     const enemyCell = g.world.castles[1 - ch.team].cellPos;
     const own = g.objectives.princessOf(ch.team);
-    let soulsNear = 0;
-    if (ch.isMerchant) for (const s of g.economy.souls) if (s.owner === ch && s.pos.distanceTo(ch.pos) < 15 && s.pos.distanceTo(ch.pos) > 2) soulsNear++;
+    let soulsNear = 0, summons = 0, allyDebuffed = false;
+    if (ch.isSummoner) {
+      for (const s of g.economy.souls) { const dd = s.pos.distanceTo(ch.pos); if (dd < SUMMONER.harvestRange && dd > 3) soulsNear += s.value; }
+      for (const o of g.characters) if (o.summon && o.summon.owner === ch && o.alive) summons++;
+    }
+    if (ch.classKey === 'priest') {
+      const now = g.time;
+      for (const o of g.characters) {
+        if (!o.alive || o.team !== ch.team || dist2d(o.pos, ch.pos) > 10) continue;
+        if (now < o.st.stunUntil || now < o.st.rootUntil || (o.st.poison && now < o.st.poison.until) || (o.st.bleed && now < o.st.bleed.until) || now < o.st.slowUntil) { allyDebuffed = true; break; }
+      }
+    }
     return {
       t, d, facing, near, alliesNear, allyLow, targetNear,
       hp: ch.hp / ch.maxHp,
@@ -317,7 +355,7 @@ export class BotAI {
       nearEnemyCell: dist2d(enemyCell, ch.pos) < 40,
       princessDroppedNear: own.state === 'dropped' && dist2d(own.pos, ch.pos) < 9,
       carrierEscort: this.mode === 'escort',
-      souls: ch.souls, soulsNear,
+      souls: ch.souls, soulsNear, summons, allyDebuffed,
       inCity: g.world.castles[ch.team].inside(ch.pos.x, ch.pos.z),
       facingOk: facing,
     };
@@ -332,7 +370,7 @@ export class BotAI {
     for (const sk of skillList(ch)) {
       if (sk.menu) continue;
       const perk = perkOf(ch, sk);
-      if (perk === undefined || (ch.cd[sk.id] || 0) > 0) continue;
+      if ((ch.cd[sk.id] || 0) > 0) continue;
       if (!sk.ai) continue;
       ctx.perk = perk;
       let ok = false;
@@ -341,7 +379,8 @@ export class BotAI {
       const aim = this.aimAt(t, sk.id === 'ranger_pierce' ? 140 : sk.id.startsWith('ranger') ? 68 : 40);
       aim.target = t;
       aim.point = t ? new THREE.Vector3(t.pos.x, t.pos.y, t.pos.z).addScaledVector(t.vel || new THREE.Vector3(), 1.0) : null;
-      if (sk.id === 'mage_shield') aim.ally = this.lowestAlly(15) || ch;
+      if (sk.id === 'mage_shield' || sk.id === 'p_bless') aim.ally = this.lowestAlly(20) || ch;
+      if (sk.id === 'p_light' && !t) { const a = this.lowestAlly(30); if (!a) continue; Object.assign(aim, this.aimAt(a, 60)); }
       if (sk.id === 'mage_blink' && t) { aim.moveDir = new THREE.Vector3(ch.pos.x - t.pos.x, 0, ch.pos.z - t.pos.z).normalize(); aim.useMove = true; }
       if (sk.id === 'rogue_dash' && t) aim.moveDir = new THREE.Vector3(t.pos.x - ch.pos.x, 0, t.pos.z - ch.pos.z).normalize();
       if (C.useSkill(ch, sk.slot, aim) === true) break;
@@ -391,6 +430,7 @@ export class BotAI {
 
     if (!see) {
       g.combat.endLink(ch);
+      this.draw = null;
       this.nav.setGoal(t.pos);
       wish = this.nav.steer(1);
       return { wish, face: null };
@@ -405,13 +445,8 @@ export class BotAI {
       fx += -dirZ * this.strafeDir * 0.7; fz += dirX * this.strafeDir * 0.7;
       const l = Math.hypot(fx, fz) || 1;
       wish = { x: fx / l, z: fz / l };
-      if (ready && facing) {
-        if (cls === 'merchant') this.merchantFight(t, d);
-        else {
-          const a = ch.attackDef();
-          C.attack(ch, this.aimAt(t, cls === 'ranger' ? a.speed * 0.85 : a.speed));
-        }
-      }
+      if (cls === 'summoner') this.summonerFight(t, d, ready);
+      else if (ready && facing) this.rangedFire(t);
     } else {
       const range = ch.attackDef().range + (t.isStructure ? 1 : 0);
       if (d > range * 0.8) { wish = { x: dirX, z: dirZ }; }
@@ -429,20 +464,40 @@ export class BotAI {
     return { wish, face: toT };
   }
 
-  // ------------------------------------------------------------ bot Mercador de Almas
-  merchantFight(t, d) {
-    const ch = this.ch, g = this.game, C = g.combat;
-    const summonOk = isUnlocked(ch, 2) && perkOf(ch, SKILL_BY_ID.s_minion) !== undefined;
-    if (ch.mode === 'merchant' && summonOk && (ch.souls >= 1 || d < 15) && ch.modeCd <= 0) C.switchMode(ch);
-    if (ch.mode === 'summoner') {
-      // sem almas: liga o elo; com almas: invoca (useSkills) e ataca
-      if (ch.souls < 1 && d < 14 && !g.world.castles[ch.team].inside(ch.pos.x, ch.pos.z)) {
-        C.summonerRmb(ch, true, { ...this.aimAt(t), target: t }, g.dt);
-        return;
-      }
-      C.endLink(ch);
+  /** Tiro dos bots à distância, com tempo de reação: a arqueira tensiona o arco antes de soltar e todos pausam entre tiros. */
+  rangedFire(t) {
+    const ch = this.ch, g = this.game, C = g.combat, a = ch.attackDef();
+    if (g.time < this.nextShotAt || ch.cd.attack > 0) return;
+    const pause = this.diff.botFirePause;
+    if (a.type === 'arrow') {
+      if (!this.draw) { this.draw = { start: g.time, need: 0.5 + Math.random() * 0.6 }; return; }
+      ch.charge = Math.min(1, (g.time - this.draw.start) / a.chargeTime);
+      if (g.time - this.draw.start < this.draw.need) return;
+      const aim = this.aimAt(t, a.speed * (0.6 + 0.4 * ch.charge) * 0.9);
+      aim.charge = ch.charge;
+      C.attack(ch, aim);
+      this.draw = null; ch.charge = 0;
+      this.nextShotAt = g.time + (0.7 + Math.random() * 0.9) * pause;
+      return;
     }
-    C.attack(ch, this.aimAt(t, ch.attackDef().speed));
+    if (C.attack(ch, this.aimAt(t, a.speed || 40))) this.nextShotAt = g.time + (0.25 + Math.random() * 0.5) * pause;
+  }
+
+  /** Invocador: liga o Elo de almas no alvo para gerar almas e deixa as invocações lutarem. */
+  summonerFight(t, d, ready) {
+    const ch = this.ch, g = this.game, C = g.combat;
+    if (ready && !t.isStructure && d < SUMMONER.linkRange - 1 && ch.souls < SUMMONER.soulsMax - 1) C.soulLink(ch, true, { ...this.aimAt(t), target: t }, g.dt);
+    else C.endLink(ch);
+  }
+
+  /** Sacerdote: ressuscita um aliado morto que ainda vai demorar a renascer. */
+  priestRevive() {
+    const ch = this.ch, g = this.game, sk = SKILL_BY_ID.p_revive;
+    if ((ch.cd[sk.id] || 0) > 0 || (this.target && this.target.alive && dist2d(this.target.pos, ch.pos) < 12)) return;
+    if (g.time < (this._revAt || 0)) return;
+    this._revAt = g.time + 1;
+    const dead = g.characters.find(o => !o.alive && o.team === ch.team && !o.isMonster && o !== ch && o.respawnAt - g.time > 3);
+    if (dead) g.economy.revive(ch, dead);
   }
 
   merchantEconomy() {
@@ -451,31 +506,31 @@ export class BotAI {
     this.econAt = t + 1.5 + Math.random();
     if (!E.inCity(ch)) return;
     if (this.target && this.target.alive && dist2d(this.target.pos, ch.pos) < 20) return;
-    if (ch.mode === 'summoner') { g.combat.switchMode(ch); return; }
     const stall = E.stalls[ch.team];
-    // pega o depósito
     while (stall.depot.length && ch.backpack.length < ch.backpackSize) E.fromDepot(ch, 0);
-    // itens parados há muito tempo na banca, ou de classes que ninguém do time usa: retira (e desmancha, se puder)
-    const teamClasses = new Set(g.characters.filter(o => o.team === ch.team && o.cls && !o.isMerchant).map(o => o.classKey));
+    const team = g.characters.filter(o => o.team === ch.team && o.cls && !o.isMerchant);
+    const wanted = (it) => team.some(o => isUpgrade(o, it));
+    // itens parados há muito tempo, ou que ninguém do time quer: retira e desmancha
     const scrap = SKILL_BY_ID.m_scrap;
     for (let i = stall.slots.length - 1; i >= 0; i--) {
       const sl = stall.slots[i];
-      const stale = t - (sl.at || 0) > 120 || !teamClasses.has(sl.item.cls);
-      if (!stale || ch.backpack.length >= ch.backpackSize) continue;
+      if (t - (sl.at || 0) < 150 && wanted(sl.item)) continue;
+      if (ch.backpack.length >= ch.backpackSize) break;
       E.withdraw(ch, i);
-      if (perkOf(ch, scrap) !== undefined && (ch.cd[scrap.id] || 0) <= 0) E.scrap(ch, ch.backpack.length - 1);
-      else ch.backpack[ch.backpack.length - 1].stale = true;
+      if ((ch.cd[scrap.id] || 0) <= 0) E.scrap(ch, ch.backpack.length - 1);
       break;
     }
-    // ressuscita aliado que vai demorar a renascer
-    const rev = SKILL_BY_ID.s_revive;
-    if (perkOf(ch, rev) !== undefined && (ch.cd[rev.id] || 0) <= 0 && ch.souls >= (perkOf(ch, rev) === 'B' ? 8 : 10)) {
-      const dead = g.characters.find(o => !o.alive && o.team === ch.team && !o.isMonster && o !== ch && o.respawnAt - t > 3);
-      if (dead) { E.revive(ch, dead); return; }
+    // Oficina: forjas e sorte, se sobrar ouro no cofre
+    const f = E.forge[ch.team];
+    for (const k of ['luck1', 'master', 'shelf', 'luck2', 'legend', 'luck3']) {
+      const def = FORGE[k];
+      if (f[k] || (def.req && !f[def.req])) continue;
+      if (E.vault[ch.team] >= def.cost + 400) { E.buyForge(ch, k); return; }
+      break;
     }
     // obras
     const works = SKILL_BY_ID.m_works;
-    if (perkOf(ch, works) !== undefined && (ch.cd[works.id] || 0) <= 0 && !E.building[ch.team]) {
+    if ((ch.cd[works.id] || 0) <= 0 && !E.building[ch.team]) {
       if (E.towers[ch.team].some(tw => !tw.alive) && E.vault[ch.team] > 400) { E.rebuildTowers(ch); return; }
       const order = ['towers', 'barracks', 'treasury', 'banner', 'ossuary', 'towers', 'barracks', 'banner', 'treasury', 'towers', 'barracks', 'banner', 'ossuary'];
       for (const key of order) {
@@ -485,39 +540,37 @@ export class BotAI {
         break;
       }
     }
-    // expõe o que tem na mochila
+    // expõe o que alguém do time quer; desmancha o resto
     const max = E.stallSlotsMax(ch.team);
-    const bagFull = ch.backpack.length >= ch.backpackSize;
-    for (let i = ch.backpack.length - 1; i >= 0 && stall.slots.length < max; i--) {
-      if (!bagFull && (ch.backpack[i].stale || !teamClasses.has(ch.backpack[i].cls))) continue;
-      ch.backpack[i].stale = false;
+    for (let i = ch.backpack.length - 1; i >= 0; i--) {
+      const it = ch.backpack[i];
+      if (!wanted(it)) { if ((ch.cd[scrap.id] || 0) <= 0) { E.scrap(ch, i); } continue; }
+      if (stall.slots.length >= max) continue;
       const mode = ch.energy < 45 ? 'discount' : ch.energy > 80 ? 'overcharge' : 'normal';
       if (E.expose(ch, i, mode) !== true) E.expose(ch, i, 'discount');
     }
-    if (ch.backpack.length >= ch.backpackSize && stall.slots.length >= max) {
-      const it = ch.backpack.shift();
-      E.spawnGroundWeapon(it, ch.pos);
-    }
-    // aprimora ou fabrica
+    // aprimora peças boas com minério
     const up = SKILL_BY_ID.m_upgrade;
-    if (perkOf(ch, up) !== undefined && (ch.cd[up.id] || 0) <= 0 && ch.energy > 70) {
-      const i = ch.backpack.findIndex(it => it.lvl < 3);
-      if (i >= 0 && ch.energy >= upgradeEnergy(ch.backpack[i].lvl + 1, perkOf(ch, up)) + 20) { E.upgrade(ch, { bag: i }); return; }
-    }
-    const craft = SKILL_BY_ID.m_craft;
-    if (perkOf(ch, craft) !== undefined && (ch.cd[craft.id] || 0) <= 0 && ch.backpack.length < ch.backpackSize && stall.slots.length < max) {
-      // fabrica para quem do time está sem arma boa e ainda não tem uma na banca
-      const onSale = new Set(stall.slots.map(sl => sl.item.cls));
-      const team = g.characters.filter(o => o.team === ch.team && o.cls && !o.isMerchant);
-      const needy = team.filter(o => !onSale.has(o.classKey)).sort((a, b) => (a.weapon ? a.weapon.rarity * 10 + a.weapon.lvl : 0) - (b.weapon ? b.weapon.rarity * 10 + b.weapon.lvl : 0));
-      if (!needy.length) return;
-      const cls = needy[0].classKey;
-      let rarity = maxRarityFor(ch.level);
-      const lvl = ch.energy > 80 ? 2 : 1;
-      while (rarity > 0 && craftEnergy(rarity, lvl, perkOf(ch, craft)) > ch.energy - 15) rarity--;
-      if (craftEnergy(rarity, lvl, perkOf(ch, craft)) <= ch.energy - 5) {
-        E.craft(ch, { cls, rarity, attr: ATTR_KEYS[Math.floor(Math.random() * ATTR_KEYS.length)], lvl });
+    if ((ch.cd[up.id] || 0) <= 0 && ch.energy > 50) {
+      const i = ch.backpack.findIndex(it => it.lvl < 3 && it.rarity >= 1);
+      if (i >= 0) {
+        const c = upgradeCost(ch.backpack[i].lvl + 1, perkOf(ch, up));
+        if (ch.energy >= c.energy + 20 && ch.ore >= c.ore) { E.upgrade(ch, { bag: i }); return; }
       }
+    }
+    // fabrica para quem do time está pior equipado (arma, peitoral ou capacete)
+    const craft = SKILL_BY_ID.m_craft;
+    if ((ch.cd[craft.id] || 0) <= 0 && ch.backpack.length < ch.backpackSize && stall.slots.length < max) {
+      const onSale = new Set(stall.slots.map(sl => itemKind(sl.item) + ':' + (sl.item.cls || '')));
+      const needs = [];
+      for (const o of team) {
+        if (!o.weapon && !onSale.has('weapon:' + o.classKey)) needs.push({ kind: 'weapon', cls: o.classKey });
+        if (!o.body && !onSale.has('body:')) needs.push({ kind: 'body' });
+        if (!o.helmet && !onSale.has('helmet:')) needs.push({ kind: 'helmet' });
+      }
+      if (!needs.length) return;
+      const n = needs[Math.floor(Math.random() * needs.length)];
+      if (craftEnergy(n.kind, perkOf(ch, craft)) <= ch.energy - 10) E.craft(ch, { kind: n.kind, cls: n.cls, attr: ATTR_KEYS[Math.floor(Math.random() * ATTR_KEYS.length)] });
     }
   }
 }
@@ -539,8 +592,8 @@ export class MonsterAI {
   onHurt(src) { if (src && src.alive && src.team !== this.ch.team && !src.isStructure) this.target = src; }
   reset() { this.target = null; this.wander = null; }
 
-  /** Âncora: a casa (acampamento) ou o dono (invocação). */
-  anchor() { return this.ch.summon ? this.ch.summon.owner.pos : this.home; }
+  /** Âncora: a casa (acampamento) ou a própria posição (invocações avançam sem coleira). */
+  anchor() { return this.ch.summon ? this.ch.pos : this.home; }
 
   update(dt) {
     const ch = this.ch, g = this.game;
@@ -553,7 +606,7 @@ export class MonsterAI {
       this.perceiveAt = g.time + 0.4;
       if (this.target && (!this.target.alive || dist2d(this.target.pos, anchor) > leash || (this.target.isInvisible() && dist2d(this.target.pos, ch.pos) > 3))) this.target = null;
       if (!this.target) {
-        let best = null, bd = summon ? 16 : 13;
+        let best = null, bd = summon ? 18 : 13;
         for (const o of g.characters) {
           if (!hostile(ch, o)) continue;
           if (!summon && o.isMonster && !o.summon) continue;
@@ -576,11 +629,14 @@ export class MonsterAI {
       const m = ch.monster;
       const dx = (t.pos.x - ch.pos.x) / (d || 1), dz = (t.pos.z - ch.pos.z) / (d || 1);
       if (m.kind === 'ranged') {
-        if (d > 15) wish = { x: dx, z: dz };
+        const range = m.range * (summon && summon.rangeMul ? summon.rangeMul : 1);
+        if (d > range - 3) wish = { x: dx, z: dz };
         else if (d < 7) wish = { x: -dx, z: -dz };
-        if (d < m.range && g.time > this.reactUntil && Math.abs(angleDiff(face, ch.yaw)) < 0.4) {
+        if (d < range && g.time > this.reactUntil && Math.abs(angleDiff(face, ch.yaw)) < 0.4) {
           const origin = new THREE.Vector3(ch.pos.x, ch.eyeY - 0.2, ch.pos.z).addScaledVector(ch.forward(), 0.8);
-          const tgt = new THREE.Vector3(t.pos.x, t.pos.y + 1.3, t.pos.z).addScaledVector(t.vel, d / 24 * 0.6);
+          const sp = m.proj === 'arrow' ? 55 : 24;
+          const tgt = new THREE.Vector3(t.pos.x, t.pos.y + 1.3, t.pos.z).addScaledVector(t.vel, d / sp * 0.6);
+          if (m.proj === 'arrow') tgt.y += 0.5 * 4 * (d / sp) ** 2;
           g.combat.attack(ch, { origin, dir: tgt.sub(origin).normalize() });
         }
       } else {
@@ -592,13 +648,17 @@ export class MonsterAI {
           g.combat.attack(ch, { origin: ch.chest, dir: new THREE.Vector3(dx, 0, dz) });
         }
       }
-      if (fromHome > (summon ? 28 : 30)) this.target = null;
+      if (!summon && fromHome > 30) this.target = null;
     } else if (summon) {
-      // segue o dono
-      if (fromHome > 4.5) {
-        this.nav.setGoal(anchor);
-        wish = this.nav.steer(3) || null;
+      // avança contra o inimigo: vai até a masmorra do outro castelo pela rota mais curta
+      if (!this.goal || g.time > (this.goalAt || 0)) {
+        const cell = g.world.castles[1 - ch.team].cellPos;
+        this.goal = new THREE.Vector3(cell.x + (Math.random() - 0.5) * 8, 0, cell.z + (ch.team === 0 ? -8 : 8));
+        this.goalAt = g.time + 4;
+        this.nav.setGoal(this.goal);
       }
+      wish = this.nav.steer(3) || null;
+      if (wish) { wish.x *= 0.85; wish.z *= 0.85; }
     } else {
       if (fromHome > 4) {
         const dx = this.home.x - ch.pos.x, dz = this.home.z - ch.pos.z, l = Math.hypot(dx, dz);
