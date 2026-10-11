@@ -1,20 +1,24 @@
-// Partida: cria o mundo, os times, monstros e objetivos, e roda o loop principal.
+// Partida: cria o mundo, os times, monstros, objetivos e economia, e roda o loop principal.
 import * as THREE from 'three';
 import { Collision } from './collision.js';
-import { World, heightAt } from './world.js';
+import { World } from './world.js';
 import { Character } from './entities.js';
 import { Combat } from './combat.js';
 import { Effects } from './effects.js';
 import { Objectives } from './objectives.js';
+import { Economy } from './economy.js';
+import { Menus } from './menus.js';
 import { BotAI, MonsterAI } from './ai.js';
 import { PlayerController } from './player.js';
 import { HUD } from './hud.js';
-import { TEAM, TEAM_NAME, TEAM_CSS, CLASSES, CLASS_KEYS, BOT_NAMES, RESPAWN_TIME, SETTINGS } from './config.js';
+import { TEAM, TEAM_NAME, TEAM_CSS, CLASSES, CLASS_KEYS, BOT_NAMES, SETTINGS, XP, GOLD, MONSTERS } from './config.js';
+import { botAutoSpend, addXp } from './progression.js';
 import { sfx } from './audio.js';
 import { cloneModel } from './assets.js';
 
 const ROLES = ['attacker', 'defender', 'attacker', 'attacker', 'forager', 'defender', 'attacker', 'attacker'];
-const BOT_CLASSES = ['knight', 'ranger', 'barbarian', 'mage', 'rogue', 'knight', 'ranger', 'barbarian'];
+const BOT_CLASSES = ['knight', 'ranger', 'barbarian', 'halberdier', 'mage', 'swordsman', 'rogue', 'knight', 'ranger', 'barbarian'];
+const COMBAT_CLASSES = CLASS_KEYS.filter(k => k !== 'merchant');
 
 export class Game {
   constructor(renderer, ui) {
@@ -40,6 +44,7 @@ export class Game {
     this.effects = new Effects(this.scene);
     this.combat = new Combat(this);
     this.characters = [];
+    this.structures = [];
 
     // jogador
     const castles = this.world.castles;
@@ -51,21 +56,30 @@ export class Game {
     document.getElementById('markers').innerHTML = '';
     document.getElementById('feed').innerHTML = '';
     this.hud = new HUD(this);
+    this.menus = this.menus || new Menus(this);
+    this.menus.close(true);
     this.objectives = new Objectives(this);
+    this.economy = new Economy(this);
 
     // bots
     const n = this.settings.teamSize;
     for (const team of [TEAM.BLUE, TEAM.RED]) {
       const count = team === TEAM.BLUE ? n - 1 : n;
-      const offset = Math.floor(Math.random() * 5);
+      const offset = Math.floor(Math.random() * BOT_CLASSES.length);
+      const wantMerchant = n >= 6 && !(team === TEAM.BLUE && playerClass === 'merchant');
       for (let i = 0; i < count; i++) {
-        const cls = BOT_CLASSES[(i + offset) % BOT_CLASSES.length];
+        let cls = BOT_CLASSES[(i + offset) % BOT_CLASSES.length];
+        let role = ROLES[i % ROLES.length];
+        if (wantMerchant && i === count - 1) { cls = 'merchant'; role = 'merchant'; }
         const ch = new Character(this, { team, classKey: cls, name: BOT_NAMES[team][i % BOT_NAMES[team].length] });
-        new BotAI(ch, ROLES[i % ROLES.length]);
+        new BotAI(ch, role);
+        botAutoSpend(ch);
+        ch.gold = 40 + Math.floor(Math.random() * 30);
         this.characters.push(ch);
         this.spawnChar(ch, i);
       }
     }
+    this.player.gold = 60;
     // monstros nos acampamentos
     for (const camp of this.world.camps) {
       const types = ['Skeleton_Warrior', 'Skeleton_Minion', 'Skeleton_Mage', 'Skeleton_Rogue', 'Skeleton_Minion'];
@@ -88,7 +102,7 @@ export class Game {
     this.hud.lastClass = null;
     this.running = true;
     this.paused = false;
-    this.announce('Resgate a Princesa Azul!', 'Ela está presa na masmorra do castelo vermelho, do outro lado do mapa', TEAM.BLUE);
+    this.announce('Resgate a Princesa Azul!', 'Aperte K para escolher sua primeira skill. Ela está presa no castelo vermelho.', TEAM.BLUE);
     this.foodMeshes = new Map();
   }
 
@@ -98,21 +112,60 @@ export class Game {
     const p = sp.clone();
     p.x += (Math.random() - 0.5) * 2; p.z += (Math.random() - 0.5) * 2;
     ch.spawn(p, castle.facing);
+    if (ch.resRespawn) { ch.st.resBonusUntil = this.time + 15; ch.resRespawn = false; }
     if (ch.ai) ch.ai.reset();
+    if (ch.isBot && this.economy) this.economy.botShop(ch);
   }
 
-  onKill(target, source) {
+  /** Volta à vida no lugar indicado (Ressurreição do Mercador de Almas). */
+  reviveChar(ch, pos, yaw) {
+    ch.spawn(pos, yaw);
+    ch.respawnAt = 0;
+    if (ch.ai) ch.ai.reset();
+    if (ch.isPlayer) {
+      this.ui.confirmRespawn = false;
+      this.ui.hideRespawn();
+      this.pc.buildViewmodel();
+      this.announce('Você foi ressuscitado!', '+20% de velocidade de ataque enquanto durar');
+    }
+  }
+
+  // ------------------------------------------------------------ invocações
+  summon(owner, type, kind, life, hpMul = 1) {
+    const ch = new Character(this, { team: owner.team, monsterType: type, name: MONSTERS[type].name });
+    ch.summon = { owner, kind, until: this.time + life };
+    ch.maxHp = Math.round(ch.monster.hp * hpMul);
+    new MonsterAI(ch, null);
+    ch.buildModel();
+    const a = Math.random() * Math.PI * 2;
+    const p = new THREE.Vector3(owner.pos.x + Math.cos(a) * 2.2, 0, owner.pos.z + Math.sin(a) * 2.2);
+    this.col.resolve(p, 0.6, 0);
+    ch.spawn(p, owner.yaw);
+    ch.hp = ch.maxHp;
+    ch.spawnTime = -10;
+    this.characters.push(ch);
+    this.effects.ring(p, 1.8, 0xb48aff, 0.6);
+    return ch;
+  }
+  summonsOf(owner, kind) { return this.characters.filter(c => c.summon && c.summon.owner === owner && c.summon.kind === kind && c.alive); }
+
+  onKill(target, source, { silent = false } = {}) {
     const name = (c) => c ? `<span class="${TEAM_CSS[c.team]}">${c.isPlayer ? 'Você' : c.name}</span>` : 'O ambiente';
-    if (!target.isMonster || (source && source.isPlayer)) {
-      this.feed(`${name(source)} ${source && source.isPlayer ? 'abateu' : 'abateu'} ${name(target)}`);
+    const killer = source && source.summon ? source.summon.owner : source;
+    if (!silent && (!target.isMonster || (killer && killer.isPlayer)) && !target.summon) {
+      this.feed(`${name(killer)} abateu ${name(target)}`);
     }
     target.diedAt = this.time;
-    target.respawnAt = this.time + (target.isMonster ? 45 : target.isPlayer ? RESPAWN_TIME : RESPAWN_TIME + 2);
-    (this.deathLog || (this.deathLog = [])).push([target.team, target.ai ? target.ai.mode : 'p', Math.round(target.pos.x), Math.round(target.pos.z), source ? (source.isMonster ? 'M' : source.team) : '-']);
+    if (target.summon) { target.respawnAt = Infinity; return; }
+    const resurrected = target.resurrectEnd || (target.st.resUntil && this.time < target.st.resUntil);
+    target.resurrectEnd = false;
+    if (resurrected) { target.resRespawn = true; target.st.resUntil = 0; target.respawnAt = this.time; }
+    else target.respawnAt = this.time + (target.isMonster ? 45 : this.economy.respawnTime(target));
     if (target.isPlayer) {
       this.pc.deathTime = this.time;
-      const killer = source ? (source.isMonster ? source.name : source.name + ' (' + CLASSES[source.classKey].name + ')') : 'o destino';
-      this.ui.showRespawn(`Você foi abatido por ${killer}`);
+      const killerName = killer ? (killer.isMonster ? killer.name : killer.name + ' (' + CLASSES[killer.classKey].name + ')') : (resurrected ? 'o fim da ressurreição' : 'o destino');
+      this.menus.close(true);
+      this.ui.showRespawn(resurrected && !killer ? 'A ressurreição acabou' : `Você foi abatido por ${killerName}`);
     }
   }
 
@@ -126,8 +179,10 @@ export class Game {
     const throne = this.world.castles[team].throne;
     princess.pos.copy(throne);
     princess.playLoop('Idle_A');
+    addXp(carrier, XP.rescue, 'resgate');
+    for (const c of this.characters) if (c.team === team && c.cls) c.gold += GOLD.rescue;
     const who = carrier.isPlayer ? 'Você' : carrier.name;
-    if (team === this.player.team) { sfx('fanfare'); this.announce(`${who} resgatou a ${princess.name}!`, `Placar: ${this.score[0]} x ${this.score[1]}`, team); }
+    if (team === this.player.team) { sfx('fanfare'); this.announce(`${who} resgatou a ${princess.name}!`, `Placar: ${this.score[0]} x ${this.score[1]} · +${GOLD.rescue} de ouro para o time`, team); }
     else { sfx('sad'); this.announce(`O time ${TEAM_NAME[team]} resgatou a princesa deles!`, `Placar: ${this.score[0]} x ${this.score[1]}`, team); }
     this.feed(`<span class="${TEAM_CSS[team]}">${who}</span> <span class="g">resgatou a ${princess.name}!</span>`);
     if (this.score[team] >= this.settings.scoreToWin) {
@@ -143,16 +198,16 @@ export class Game {
   endMatch(winner) {
     if (this.over) return;
     this.over = true;
+    this.menus.close(true);
     this.ui.showEnd(winner === this.player.team, this);
   }
 
-  /** Agenda uma função em tempo de jogo (respeita a pausa). */
   after(sec, fn) { this.timers.push({ at: this.time + sec, fn }); }
 
   announce(t, s, team) { this.hud && this.hud.announce(t, s, team); }
   feed(html) { this.hud && this.hud.feed(html); }
 
-  openClassMenu(changeNow) {
+  openClassMenu() {
     if (!this.player.alive) return;
     if (!this.world.castles[this.player.team].inside(this.player.pos.x, this.player.pos.z)) {
       this.announce('Só é possível trocar de classe dentro do seu castelo', '');
@@ -165,6 +220,7 @@ export class Game {
     const p = this.player;
     if (p.classKey === key) return;
     const ratio = p.alive ? p.hp / p.maxHp : 1;
+    this.combat.endLink(p);
     p.setClass(key);
     if (immediate && p.alive) p.hp = Math.max(1, Math.round(p.maxHp * ratio));
     this.pc.buildViewmodel();
@@ -174,15 +230,19 @@ export class Game {
   update(dt) {
     this.dt = dt;
     this.time += dt;
-    const p = this.player;
     for (let i = this.timers.length - 1; i >= 0; i--) {
       if (this.time >= this.timers[i].at) { const t = this.timers[i]; this.timers.splice(i, 1); t.fn(); }
     }
 
     this.pc.update(dt);
+    let cleanup = false;
     for (const c of this.characters) {
-      for (const k in c.cd) if (c.cd[k] > 0) c.cd[k] = Math.max(0, c.cd[k] - dt);
+      if (c.summon && c.alive && this.time >= c.summon.until) {
+        this.effects.puff(c.chest, 0xb48aff);
+        this.combat.kill(c, null, { silent: true });
+      }
       if (!c.alive) {
+        if (c.summon) { if (this.time - c.diedAt > 3) cleanup = true; else if (c.model && this.time - c.diedAt > 2.5) c.hideModel(); continue; }
         if (c.respawnAt && this.time >= c.respawnAt && !this.over) {
           if (c.isPlayer) {
             if (!this.ui.confirmRespawn) continue;
@@ -196,7 +256,7 @@ export class Game {
             c.spawn(c.home, Math.random() * 6);
             c.ai.reset();
           } else {
-            if (Math.random() < 0.25) c.setClass(CLASS_KEYS[Math.floor(Math.random() * CLASS_KEYS.length)]);
+            if (!c.isMerchant && Math.random() < 0.25) { c.setClass(COMBAT_CLASSES[Math.floor(Math.random() * COMBAT_CLASSES.length)]); botAutoSpend(c); }
             this.spawnChar(c);
           }
         } else if (c.model && c.model.visible && c.diedAt !== undefined && this.time - c.diedAt > 3.5) {
@@ -205,6 +265,15 @@ export class Game {
         continue;
       }
       if (c.ai) c.ai.update(dt);
+    }
+    if (cleanup) {
+      for (let i = this.characters.length - 1; i >= 0; i--) {
+        const c = this.characters[i];
+        if (c.summon && !c.alive && this.time - c.diedAt > 3) {
+          if (c.model) this.scene.remove(c.model);
+          this.characters.splice(i, 1);
+        }
+      }
     }
     // separação entre personagens
     const chars = this.characters;
@@ -219,12 +288,14 @@ export class Game {
         if (d2 < rr * rr && d2 > 1e-6) {
           const d = Math.sqrt(d2), push = (rr - d) * 0.5;
           const nx = dx / d, nz = dz / d;
-          if (!a.isPlayer || true) { a.pos.x -= nx * push; a.pos.z -= nz * push; }
-          b.pos.x += nx * push; b.pos.z += nz * push;
+          const af = a.isPlanted() ? 0 : 1, bf = b.isPlanted() ? 0 : 1;
+          a.pos.x -= nx * push * af; a.pos.z -= nz * push * af;
+          b.pos.x += nx * push * bf; b.pos.z += nz * push * bf;
         }
       }
     }
     this.combat.update(dt);
+    this.economy.update(dt);
     this.objectives.update(dt);
     this.effects.update(dt);
     this.world.update(dt);
@@ -235,8 +306,9 @@ export class Game {
         this.updateFoodCarry(c);
       }
     }
-    this.world.followSun(p.pos);
+    this.world.followSun(this.player.pos);
     this.hud.update(dt);
+    this.menus.update(dt);
   }
 
   updateFoodCarry(c) {
@@ -266,5 +338,6 @@ export class Game {
   stop() {
     this.running = false;
     this.hud && this.hud.show(false);
+    this.menus && this.menus.close(true);
   }
 }

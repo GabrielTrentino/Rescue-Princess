@@ -1,8 +1,11 @@
 // Controle em primeira pessoa: mouse/teclado, câmera, arma na mão (viewmodel) e ações do jogador.
 import * as THREE from 'three';
-import { cloneModel } from './assets.js';
-import { EYE_HEIGHT } from './config.js';
+import { cloneModel, steelify } from './assets.js';
+import { EYE_HEIGHT, RARITY } from './config.js';
 import { sfx } from './audio.js';
+import { skillList } from './skills.js';
+
+const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD'];
 
 export class PlayerController {
   constructor(game, ch, camera) {
@@ -21,7 +24,6 @@ export class PlayerController {
     this.fov = 75;
     this.stepT = 0;
 
-    // cena separada para a arma em primeira pessoa
     this.viewScene = new THREE.Scene();
     this.viewCam = new THREE.PerspectiveCamera(60, camera.aspect, 0.05, 20);
     this.viewScene.add(new THREE.HemisphereLight(0xffffff, 0x666655, 2.2));
@@ -37,6 +39,8 @@ export class PlayerController {
   bind() {
     this._kd = (e) => {
       if (e.code === 'Tab') e.preventDefault();
+      if (this.game.menus && this.game.menus.isOpen) return;
+      if (!document.getElementById('classMenu').classList.contains('hidden')) return;
       if (!this.keys[e.code]) this.pressed[e.code] = true;
       this.keys[e.code] = true;
     };
@@ -80,7 +84,7 @@ export class PlayerController {
   buildViewmodel() {
     const vm = this.vm;
     while (vm.children.length) vm.remove(vm.children[0]);
-    const key = this.ch.classKey;
+    const ch = this.ch, key = ch.classKey;
     this.parts = {};
     const add = (model, x, y, z, rx, ry, rz, s) => {
       const pivot = new THREE.Group();
@@ -106,9 +110,25 @@ export class PlayerController {
     } else if (key === 'rogue') {
       this.parts.main = add('dagger', 0.5, -0.5, -0.9, -1.35, 0, -0.15, 0.62);
       this.parts.off = add('dagger', -0.5, -0.5, -0.9, -1.35, 0, 0.15, 0.62);
+    } else if (key === 'halberdier') {
+      this.parts.main = add('halberd', 0.6, -0.9, -1.25, -0.75, 0.35, -0.3, 0.44);
+    } else if (key === 'swordsman') {
+      this.parts.main = add('sword_A', 0.55, -0.64, -1.1, -0.5, 0.5, -0.38, 0.42);
+      steelify(this.parts.main);
+    } else if (key === 'merchant') {
+      if (ch.mode === 'summoner') this.parts.main = add('spellbook_open', 0.32, -0.42, -0.9, -0.5, -0.25, 0, 0.42);
+      else this.parts.main = add('hammer_B', 0.6, -0.62, -1.05, -0.45, 0.4, -0.3, 0.38);
     }
     this.parts.food = add('plate_food_A', -0.42, -0.55, -0.95, 0.35, 0, 0, 0.32);
     this.parts.food.visible = false;
+    // brilho da raridade da arma equipada
+    const r = ch.weapon ? RARITY[ch.weapon.rarity] : null;
+    if (this.parts.main && r) {
+      this.parts.main.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.emissive = new THREE.Color(r.color); o.material.emissiveIntensity = 0.35; } });
+    }
+    this._inv = false;
+    this._vmMode = ch.mode;
+    this._vmWeapon = ch.weapon;
     vm.visible = true;
   }
 
@@ -116,16 +136,28 @@ export class PlayerController {
     this.swingT = 0; this.swingDur = dur; this.swingKind = kind; this.swingSide *= -1;
   }
 
+  aim(look, wx = 0, wz = 0) {
+    const ch = this.ch;
+    return {
+      origin: new THREE.Vector3(ch.pos.x, ch.pos.y + EYE_HEIGHT, ch.pos.z).addScaledVector(look, 0.6),
+      dir: look.clone(), charge: this.charge || 0,
+      moveDir: new THREE.Vector3(wx, 0, wz),
+      useMove: true,
+    };
+  }
+
   // ------------------------------------------------------------ loop
   update(dt) {
     const g = this.game, ch = this.ch, C = g.combat;
-    // olhar
+    const menuOpen = g.menus && g.menus.isOpen;
+    if (menuOpen) { this.keys = {}; this.mouse.left = this.mouse.right = false; }
     if (ch.alive) {
       ch.yaw -= this.mdx * this.sens * (this.zoomed ? 0.5 : 1);
       ch.pitch -= this.mdy * this.sens * (this.zoomed ? 0.5 : 1);
       ch.pitch = Math.max(-1.45, Math.min(1.45, ch.pitch));
     }
     this.mdx = this.mdy = 0;
+    if (this._vmMode !== ch.mode || this._vmWeapon !== ch.weapon) this.buildViewmodel();
 
     const fwd = new THREE.Vector3(Math.sin(ch.yaw), 0, Math.cos(ch.yaw));
     const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
@@ -139,6 +171,8 @@ export class PlayerController {
       if (this.keys.KeyA) { wx -= right.x; wz -= right.z; }
       const l = Math.hypot(wx, wz);
       if (l > 0) { wx /= l; wz /= l; }
+      // mover cancela a canalização (fabricar / aprimorar)
+      if (ch.channel && MOVE_KEYS.some(k => this.pressed[k])) g.economy.cancelChannel(ch);
       const wantSprint = (this.keys.ShiftLeft || this.keys.ShiftRight) && this.keys.KeyW && !ch.blocking;
       const sprint = wantSprint && this.stamina > 0.05;
       if (sprint && l > 0) this.stamina = Math.max(0, this.stamina - dt * 0.22);
@@ -150,49 +184,52 @@ export class PlayerController {
       if (ch.onGround && hs > 1) {
         this.bobT += dt * hs * 1.15;
         this.stepT += dt * hs;
-        if (this.stepT > 3.2) { this.stepT = 0; sfx('step'); }
+        if (this.stepT > 3.2) { this.stepT = 0; if (!(g.time < ch.st.silentUntil)) sfx('step'); }
       }
 
-      const aim = () => ({
-        origin: new THREE.Vector3(ch.pos.x, ch.pos.y + EYE_HEIGHT, ch.pos.z).addScaledVector(look, 0.6),
-        dir: look.clone(), charge: this.charge || 0,
-        moveDir: new THREE.Vector3(wx, 0, wz),
-      });
-      const a = ch.cls.attack;
+      const a = ch.attackDef();
+      const canUse = !menuOpen && !ch.channel;
+      // ataque base
+      if (canUse) {
+        if (a.type === 'arrow') {
+          if (this.mouse.left && ch.cd.attack <= 0 && !ch.carrying && !ch.isStunned()) this.charge = Math.min(1, (this.charge || 0) + dt / a.chargeTime);
+          if (this.mouse.leftReleased) {
+            if ((this.charge || 0) > 0.05 && C.attack(ch, this.aim(look, wx, wz))) this.swing('shoot', 0.25);
+            this.charge = 0;
+          }
+        } else if (this.mouse.left) {
+          if (C.attack(ch, this.aim(look, wx, wz))) this.swing(a.swing || 'slash', Math.min(0.45, a.cooldown / ch.attackSpeed() * 0.9));
+        }
+      }
+      // botão direito
+      const rmb = ch.cls.rmb;
+      this.zoomed = false;
+      if (rmb === 'zoom') this.zoomed = this.mouse.right && canUse;
+      else if (rmb === 'modes' && ch.mode === 'summoner') {
+        const r = canUse ? C.summonerRmb(ch, this.mouse.right, this.aim(look), dt) : C.summonerRmb(ch, false, null, dt);
+        if (r === 'march') this.mouse.right = false;
+      } else C.block(ch, this.mouse.right && canUse);
+      if (rmb === 'modes' && ch.mode !== 'summoner') C.endLink(ch);
 
-      // ataque principal
-      if (a.type === 'arrow') {
-        if (this.mouse.left && ch.cd.attack <= 0 && !ch.carrying) this.charge = Math.min(1, (this.charge || 0) + dt / a.chargeTime);
-        if (this.mouse.leftReleased) {
-          if ((this.charge || 0) > 0.05 && C.attack(ch, aim())) this.swing('shoot', 0.25);
-          this.charge = 0;
-        }
-      } else if (this.mouse.left) {
-        if (C.attack(ch, aim())) {
-          this.swing(ch.classKey === 'barbarian' ? 'chop' : ch.classKey === 'rogue' ? 'stab' : ch.classKey === 'mage' ? 'cast' : 'slash', Math.min(0.45, a.cooldown * 0.9));
+      // skills 1-5
+      if (canUse) {
+        for (let s = 1; s <= 5; s++) {
+          if (!this.pressed['Digit' + s] && !this.pressed['Numpad' + s]) continue;
+          this.trySkill(s, look, wx, wz);
         }
       }
-      // secundário
-      const alt = ch.cls.alt;
-      if (alt.type === 'block') C.alt(ch, aim(), this.mouse.right);
-      else if (alt.type === 'zoom') this.zoomed = this.mouse.right && ch.alive;
-      else if (this.mouse.rightPressed) {
-        if (C.alt(ch, aim(), true)) this.swing(alt.type === 'kick' ? 'kick' : alt.type === 'heal' ? 'cast' : 'dash', 0.3);
+      // troca de modo do Mercador
+      if (!menuOpen && ch.isMerchant && (this.pressed.Backquote || this.pressed.Quote || this.pressed.KeyQ)) {
+        if (C.switchMode(ch)) { this.buildViewmodel(); g.hud.status(ch.mode === 'summoner' ? 'Modo Invocador' : 'Modo Mercador'); }
       }
-      // especial
-      if (this.pressed.KeyQ) {
-        if (C.ability(ch, aim())) this.swing(ch.classKey === 'barbarian' ? 'spin' : 'cast', 0.45);
-      }
-      if (this.pressed.KeyE) {
-        const r = g.objectives.interact(ch);
-        if (r === 'full') g.announce('A prisioneira não aguenta comer mais', '');
-      }
-      if (this.pressed.KeyB) g.openClassMenu(true);
+      if (!menuOpen && this.pressed.KeyE) this.interact();
+      if (!menuOpen && this.pressed.KeyB) g.openClassMenu(true);
+      if (!menuOpen && this.pressed.KeyK) g.menus.open('skills');
+      if (!menuOpen && this.pressed.KeyI) g.menus.open('bag');
     } else {
       this.zoomed = false;
       this.charge = 0;
     }
-    if (!ch.alive) this.zoomed = false;
 
     // câmera
     const cam = this.camera;
@@ -201,7 +238,6 @@ export class PlayerController {
       cam.position.set(ch.pos.x, ch.pos.y + EYE_HEIGHT + bob, ch.pos.z);
       cam.lookAt(cam.position.x + look.x, cam.position.y + look.y, cam.position.z + look.z);
     } else {
-      // câmera de morte: desce e inclina
       const k = Math.min(1, (g.time - (this.deathTime || g.time)) / 1.2);
       cam.position.set(ch.pos.x, ch.pos.y + EYE_HEIGHT * (1 - k * 0.75) + 0.2, ch.pos.z);
       cam.lookAt(cam.position.x + look.x, cam.position.y + look.y - k * 0.4, cam.position.z + look.z);
@@ -221,13 +257,46 @@ export class PlayerController {
     this.mouse.leftPressed = this.mouse.leftReleased = this.mouse.rightPressed = false;
   }
 
+  trySkill(slot, look, wx, wz) {
+    const g = this.game, ch = this.ch;
+    const r = g.combat.useSkill(ch, slot, this.aim(look, wx, wz));
+    const sk = skillList(ch).find(s => s.slot === slot);
+    if (r === true) {
+      const kind = sk && (sk.id.includes('whirl') || sk.id.includes('spin')) ? 'spin' : sk && /dash|charge|lunge|leap|blink/.test(sk.id) ? 'dash' : sk && /kick/.test(sk.id) ? 'kick' : sk && /thrust|hook|throw|knife/.test(sk.id) ? 'thrust' : 'cast';
+      this.swing(kind, 0.4);
+    } else if (r === 'locked') {
+      g.hud.status(`${sk ? sk.name : 'Skill'} bloqueada · aperte K para escolher`);
+    } else if (r === 'nosouls') g.hud.status('Almas insuficientes');
+    else if (r === 'noenergy') g.hud.status('Energia insuficiente');
+    else if (r && r.menu) {
+      if (r.menu === 'works' && !g.world.castles[ch.team].inside(ch.pos.x, ch.pos.z)) { g.hud.status('Obras só dentro da cidade'); return; }
+      if (r.menu === 'stall') {
+        if (!g.economy.nearStall(ch)) g.combat.commitSkill(ch, r.skill); // à distância: paga energia e recarga
+      }
+      g.menus.open(r.menu, { skill: r.skill, perk: r.perk });
+    } else if (r === false && sk && (ch.cd[sk.id] || 0) > 0) {
+      g.hud.status(`${sk.name}: ${Math.ceil(ch.cd[sk.id])} s`);
+    }
+  }
+
+  interact() {
+    const g = this.game, ch = this.ch;
+    const r = g.objectives.interact(ch);
+    if (r === 'full') { g.announce('A prisioneira não aguenta comer mais', ''); return; }
+    if (r === 'nocarry') { g.announce(`O ${ch.cls.name} não pode carregar a princesa`, 'Proteja quem a carrega'); return; }
+    if (r) return;
+    const e = g.economy.interact(ch);
+    if (e === 'stall') g.menus.open('stall');
+    else if (e === 'sell') g.menus.open('sell');
+  }
+
   updateViewmodel(dt) {
-    const ch = this.ch, P = this.parts;
+    const ch = this.ch, P = this.parts, t = this.game.time;
     this.vm.visible = ch.alive && !ch.carrying;
     if (!this.vm.visible) return;
     this.swingT = Math.min(1, this.swingT + dt / this.swingDur);
     const s = this.swingT < 1 ? Math.sin(this.swingT * Math.PI) : 0;
-    const e = this.swingT; // 0..1
+    const e = this.swingT;
     const hs = Math.hypot(ch.vel.x, ch.vel.z);
     const bobX = Math.cos(this.bobT * 0.5) * 0.025 * Math.min(1, hs / 6);
     const bobY = Math.abs(Math.sin(this.bobT * 0.5)) * 0.035 * Math.min(1, hs / 6);
@@ -247,8 +316,12 @@ export class PlayerController {
       } else if (k === 'stab') {
         const p = this.swingSide > 0 ? m : (P.off || m);
         p.position.z -= s * 0.55; p.rotation.x += s * 0.2;
+      } else if (k === 'thrust') {
+        m.position.z -= s * 0.9; m.position.x -= s * 0.15;
       } else if (k === 'cast') {
         m.position.z -= s * 0.35; m.position.x -= s * 0.2; m.rotation.x -= s * 0.4;
+      } else if (k === 'throw') {
+        m.position.z -= s * 0.3; m.rotation.x -= s * 0.7; m.position.y += s * 0.2;
       } else if (k === 'shoot') {
         m.position.z += s * 0.05;
       } else if (k === 'kick') {
@@ -260,17 +333,24 @@ export class PlayerController {
       this.vm.rotation.set(0, 0, 0);
     }
     if (k !== 'spin' || this.swingT >= 1) this.vm.rotation.y = 0;
+    // preparo do Golpe pesado / canalização
+    if (t < ch.st.windupUntil && m) { m.position.y += 0.25; m.rotation.x += 0.8; }
+    if (ch.channel && m) { m.position.y += Math.abs(Math.sin(t * 9)) * 0.15; m.rotation.x -= 0.3; }
     if (P.off && ch.blocking) {
       P.off.position.set(-0.18, -0.38, -0.85);
       P.off.rotation.set(0.05, Math.PI + 0.05, 0);
+    } else if (ch.blocking && m) {
+      m.position.x -= 0.35; m.position.y += 0.2; m.rotation.z += 1.2;
     }
+    if (ch.isPlanted() && m) { m.position.y -= 0.1; m.position.z -= 0.2; }
+    // machado arremessado / arco
+    if (ch.classKey === 'barbarian' && m) m.visible = !(t < ch.st.axeOutUntil);
     if (P.arrow) {
       const c = this.charge || 0;
       P.arrow.visible = ch.cd.attack <= 0.05;
       P.arrow.position.z += c * 0.28;
       if (c > 0) { m.position.z += c * 0.12; m.position.x += (Math.random() - 0.5) * 0.004 * c; }
     }
-    // invisível: viewmodel transparente
     const inv = ch.isInvisible();
     if (inv !== this._inv) {
       this.vm.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.transparent = inv; o.material.opacity = inv ? 0.35 : 1; } });

@@ -95,6 +95,14 @@ export class Effects {
     this._add(m, 0.5, (e) => { const k = e.t / e.life; e.mesh.scale.setScalar(0.4 + k * 1.6); e.mesh.material.opacity = 0.6 * (1 - k); });
   }
 
+  /** Corda/raio rápido entre dois pontos (Gancho). */
+  rope(a, b, color = 0xc8b089) {
+    const geo = new THREE.BufferGeometry().setFromPoints([a.clone(), b.clone()]);
+    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 1 }));
+    line.frustumCulled = false;
+    this._add(line, 0.35, (e) => { e.mesh.material.opacity = 1 - e.t / e.life; });
+  }
+
   update(dt) {
     for (let i = this.list.length - 1; i >= 0; i--) {
       const e = this.list[i];

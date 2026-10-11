@@ -67,6 +67,21 @@ const SFX = {
   sad: (m) => { [392, 330, 262].forEach((f, i) => tone({ freq: f, dur: 0.4, type: 'triangle', vol: 0.2, delay: i * 0.18 }, m)); },
   hurt: (m) => tone({ freq: 200, to: 110, dur: 0.18, type: 'sawtooth', vol: 0.12 }, m),
   step: (m) => noise({ dur: 0.05, freq: 250, q: 1, vol: 0.12, type: 'lowpass' }, m),
+  warcry: (m) => { tone({ freq: 196, to: 260, dur: 0.45, type: 'sawtooth', vol: 0.14 }, m); noise({ dur: 0.4, freq: 600, q: 0.6, vol: 0.25, type: 'lowpass' }, m); },
+  shield: (m) => { tone({ freq: 880, to: 1320, dur: 0.3, type: 'sine', vol: 0.18 }, m); tone({ freq: 1320, dur: 0.25, type: 'triangle', vol: 0.1, delay: 0.1 }, m); },
+  blink: (m) => { tone({ freq: 1400, to: 300, dur: 0.25, type: 'sine', vol: 0.18 }, m); noise({ dur: 0.2, freq: 4000, q: 2, vol: 0.15 }, m); },
+  poison: (m) => { noise({ dur: 0.3, freq: 1800, q: 4, vol: 0.2, sweep: 0.5 }, m); tone({ freq: 300, to: 200, dur: 0.3, type: 'triangle', vol: 0.1 }, m); },
+  hook: (m) => { noise({ dur: 0.2, freq: 2200, q: 1.5, vol: 0.3, sweep: 0.3 }, m); tone({ freq: 500, to: 150, dur: 0.25, type: 'square', vol: 0.08 }, m); },
+  summon: (m) => { tone({ freq: 110, to: 70, dur: 0.6, type: 'sawtooth', vol: 0.14 }, m); noise({ dur: 0.5, freq: 400, q: 0.5, vol: 0.3, type: 'lowpass' }, m); tone({ freq: 660, to: 330, dur: 0.4, vol: 0.1, delay: 0.1 }, m); },
+  soul: (m) => { tone({ freq: 740, to: 1100, dur: 0.3, type: 'sine', vol: 0.12 }, m); tone({ freq: 1100, dur: 0.2, type: 'sine', vol: 0.08, delay: 0.12 }, m); },
+  shadow: (m) => { noise({ dur: 0.3, freq: 300, q: 0.8, vol: 0.3, sweep: 0.5, type: 'lowpass' }, m); tone({ freq: 220, to: 110, dur: 0.25, type: 'triangle', vol: 0.12 }, m); },
+  coin: (m) => { tone({ freq: 1568, dur: 0.08, type: 'square', vol: 0.06 }, m); tone({ freq: 2093, dur: 0.12, type: 'square', vol: 0.05, delay: 0.05 }, m); },
+  chest: (m) => { [784, 988, 1175, 1568].forEach((f, i) => tone({ freq: f, dur: 0.15, type: 'triangle', vol: 0.15, delay: i * 0.06 }, m)); },
+  buy: (m) => { tone({ freq: 1046, dur: 0.1, type: 'triangle', vol: 0.15 }, m); tone({ freq: 1568, dur: 0.18, type: 'triangle', vol: 0.15, delay: 0.08 }, m); },
+  craft: (m) => { for (let i = 0; i < 3; i++) tone({ freq: 1200 + i * 80, dur: 0.06, type: 'square', vol: 0.07, delay: i * 0.12 }, m); noise({ dur: 0.08, freq: 3500, q: 3, vol: 0.2 }, m); },
+  trap: (m) => { tone({ freq: 400, to: 900, dur: 0.12, type: 'square', vol: 0.08 }, m); noise({ dur: 0.15, freq: 2500, q: 2, vol: 0.25 }, m); },
+  swap: (m) => { tone({ freq: 523, to: 784, dur: 0.18, type: 'triangle', vol: 0.14 }, m); },
+  levelup: (m) => { [523, 659, 784, 1046, 1318].forEach((f, i) => tone({ freq: f, dur: 0.22, type: 'triangle', vol: 0.18, delay: i * 0.08 }, m)); },
 };
 
 /** Toca um som. pos/listener opcionais para atenuar pela distância. */

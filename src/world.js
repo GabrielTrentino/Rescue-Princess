@@ -47,6 +47,10 @@ function mulberry32(a) {
   };
 }
 
+// pontos de moedas e túmulos (referencial azul; o lado vermelho é espelhado)
+const COIN_SPOTS = [[0, -112], [-48, -118], [48, -118], [-24, -56], [24, -56], [0, -42], [-58, -20], [58, -22]];
+const TOMB_SPOTS = [[-36, -48, 0.4], [56, -126, -0.5]];
+
 // estradas (polilinhas no mundo) — usadas para pintar o chão e evitar árvores
 const ROADS = [
   { w: 7, pts: [[0, -150], [0, 150]] },
@@ -84,6 +88,9 @@ export class World {
     this.animated = [];
     this.foodSpawns = [];
     this.camps = [];
+    this.coinSpawns = [];
+    this.chestSpawns = [];
+    this.tombSpawns = [];
     this.nav = new NavGraph(collision);
     this.time = 0;
   }
@@ -384,10 +391,16 @@ export class World {
       gateOut: v(0, z0 + 25),
       defendPoints: [v(0, z0 + 24), v(-10, z0 + 13), v(10, z0 + 13), v(3, z0 + 10), v(-32, z0), v(32, z0)],
       facing: team === TEAM.BLUE ? 0 : Math.PI, // yaw olhando para o inimigo
+      stallPos: v(-16, z0 + 3),
+      towerSpots: [v(-9, z0 + 16), v(9, z0 + 16)],
     };
     castle.inside = (x, z) => {
       const p = this.tp(team, x, z);
       return p.x > -28 && p.x < 28 && p.z > z0 - 20 && p.z < z0 + 20;
+    };
+    castle.nearWalls = (x, z, m) => {
+      const p = this.tp(team, x, z);
+      return p.x > -28 - m && p.x < 28 + m && p.z > z0 - 20 - m && p.z < z0 + 20 + m;
     };
     return castle;
   }
@@ -408,7 +421,8 @@ export class World {
       this.place('tent', cx + 5, cz - 6, { s: 10, ry: -2.2, team }); this.circ(team, cx + 5, cz - 6, 2.2, 4);
       this.place('tent', cx - 4, cz - 8, { s: 9, ry: 2.6, team }); this.circ(team, cx - 4, cz - 8, 2, 4);
       this.place('building_destroyed', cx + 6, cz + 7, { s: 5, ry: 2.4, team }); this.circ(team, cx + 6, cz + 7, 3.4, 5);
-      this.place('chest_gold', cx + 1, cz - 3, { s: 1.1, ry: Math.PI, team }); this.circ(team, cx + 1, cz - 3, 1, 1.2);
+      this.circ(team, cx + 1, cz - 3, 1, 1.2);
+      { const q = this.tp(team, cx + 1, cz - 3); this.chestSpawns.push({ x: q.x, z: q.z, ry: team === TEAM.RED ? 0 : Math.PI }); }
       for (const [dx, dz] of [[-6, 3], [-2, 8]]) { this.place('barrel', cx + dx, cz + dz, { s: 8, team }); this.circ(team, cx + dx, cz + dz, 0.9, 1.6); }
       const p = this.tp(team, cx, cz);
       this.camps.push({ x: p.x, z: p.z });
@@ -416,6 +430,9 @@ export class World {
         const q = this.tp(team, x, z);
         this.foodSpawns.push(new THREE.Vector3(q.x, terrainHeight(q.x, q.z), q.z));
       }
+      // moedas nas rotas, túmulos (almas) e baús
+      for (const [x, z] of COIN_SPOTS) { const q = this.tp(team, x, z); this.coinSpawns.push({ x: q.x, z: q.z }); }
+      for (const [x, z, ry] of TOMB_SPOTS) { const q = this.tp(team, x, z); this.tombSpawns.push({ x: q.x, z: q.z, ry: ry + (team === TEAM.RED ? Math.PI : 0) }); }
     }
     // placas de pedra sob a comida: marcadores
     for (const f of this.foodSpawns) {
@@ -436,7 +453,8 @@ export class World {
       if (distToRoad(x, z) < margin) return false;
       if (Math.abs(x) < 44 && Math.abs(z) > 136) return false; // castelos
       if (Math.abs(Math.abs(x) - 60) < 8 && Math.abs(z) > 140) return false; // vilarejos
-      for (const [cx, cz, r] of [[-62, 35, 14], [62, -35, 14], [20, 27, 12], [-20, -27, 12], [30, 100, 5], [-30, -100, 5], [16, 24, 6], [-16, -24, 6]]) {
+      for (const [cx, cz, r] of [[-62, 35, 14], [62, -35, 14], [20, 27, 12], [-20, -27, 12], [30, 100, 5], [-30, -100, 5], [16, 24, 6], [-16, -24, 6],
+        ...TOMB_SPOTS.flatMap(([x, z]) => [[x, z, 4], [-x, -z, 4]]), ...COIN_SPOTS.flatMap(([x, z]) => [[x, z, 2], [-x, -z, 2]])]) {
         if (Math.hypot(x - cx, z - cz) < r + margin) return false;
       }
       for (const o of occupied) if (Math.hypot(x - o[0], z - o[1]) < o[2] + margin) return false;

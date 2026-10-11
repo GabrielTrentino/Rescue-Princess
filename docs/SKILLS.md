@@ -1,6 +1,6 @@
 # Sistema de experiência, níveis, skills e perks
 
-Documento de planejamento. Os valores numéricos são propostas iniciais e devem ser ajustados nos testes.
+Documento de design. **Implementado no jogo** (ver a seção 7 para as decisões tomadas nos pontos que estavam em aberto). Os valores numéricos ficam em `src/config.js` e `src/skills.js` e podem ser ajustados nos testes.
 
 ## 1. Experiência e níveis
 
@@ -231,7 +231,7 @@ Classe de suporte e economia, com dois modos: **Mercador** e **Invocador**. Quas
 - **Mochila:** 10 espaços (as outras classes têm 4; ver seção 5.4).
 - É a **única classe que compra itens dos outros jogadores** (seção 5.5).
 - **Não pode pegar a princesa** (seção 2).
-- **Modelo:** Mago (KayKit). No modo Mercador segura uma bolsa de moedas; no modo Invocador, um livro aberto (verificar se existem esses acessórios no pacote KayKit).
+- **Modelo:** Mago (KayKit). Não há bolsa de moedas no pacote, então no modo Mercador ele segura o martelo de ferreiro (`hammer_B`); no modo Invocador, o livro aberto (`spellbook_open`).
 
 #### Troca de modo (tecla ')
 
@@ -464,17 +464,26 @@ O mercador abre o menu de obras com a skill 5 do modo Mercador, dentro da cidade
 
 - As torres só atiram em inimigos dentro da cidade ou perto das muralhas. Podem ser destruídas, e reconstruir custa metade do preço.
 
-## 7. Pontos em aberto
+## 7. Decisões da implementação
 
-- O botão direito base (bloqueio) passa a ser igual para todas as classes. Isso tira os botões direitos atuais de Chute, Mirar, Cura e Esquiva. A proposta é colocá-los como skills (já feito acima). Confirme se isso vale.
-- O XP vale só dentro da partida, ou se acumula entre partidas (precisaria de salvamento local).
-- As perks são permanentes até o fim da partida, ou dá para trocar ao renascer?
-- Os esqueletos invocados devem atacar quem é inimigo do dono, como os bots?
-- Mercador de Almas: a energia e as almas se mantêm ao morrer, ou zeram ao renascer?
-- Mercador de Almas: dar ao jogador 10 skills com os mesmos pontos pode deixá-lo forte demais. Alternativa: um ponto libera o slot em apenas um modo.
-- A mochila e o ouro devem cair ao morrer? A proposta atual é que não.
-- Time sem mercador: a banca fica vazia, ou um vendedor fixo vende armas comuns?
-- Dois mercadores no mesmo time dividem o cofre e a banca?
-- Onde ficam no mapa a banca, os túmulos, as moedas e os baús?
-- Ladino: hoje ele carrega a princesa melhor que os outros (`carry: 1.0` em `src/config.js`, e a descrição da classe fala disso). Com a nova regra, o código e os bots precisam deixar de pegá-la.
-- Os valores de XP, dano, recargas, ouro e energia são propostas e precisam de teste em partida.
+Respostas usadas para os pontos que estavam em aberto. Todas podem ser mudadas depois.
+
+| Ponto | Decisão |
+|---|---|
+| Botão direito | Bloqueio para todas as classes. O Cavaleiro anula 75% do dano frontal (escudo); as outras, 50%. A Arqueira usa o botão direito para mirar com zoom, como na seção 4.3. Chute, Cura e Esquiva viraram skills. |
+| XP | Vale só dentro da partida. |
+| Pontos que sobram | Os pontos dos níveis 3, 5, 7, 9 e 10 evoluem uma skill já liberada para o **Nível II: −20% de recarga**. Assim os 10 pontos fecham: 5 desbloqueios + 5 evoluções. |
+| Perks | Definitivos até o fim da partida. Ao trocar de classe, a outra classe tem as próprias escolhas (os pontos são por classe; o nível é do jogador). |
+| Esqueletos invocados | Lutam pelo time do dono, atacam quem ataca o dono e seguem o dono quando não há inimigos. O XP e o ouro dos abates deles vão para o dono. |
+| Energia e almas | Não zeram ao morrer. |
+| Mochila e ouro | Não caem ao morrer. Só a arma equipada cai. |
+| Time sem mercador | A banca recebe armas comuns +1 de um vendedor fixo a cada 15 s. |
+| Dois mercadores no mesmo time | Dividem o cofre e a banca. |
+| Bots | Com 6 ou mais jogadores por time, um bot de cada time é Mercador de Almas (no time azul, só se você não escolher o Mercador). |
+| Ladino e Mercador | Não pegam a princesa. Podem encostar na princesa inimiga caída para devolvê-la à masmorra. |
+| Troca de modo | Tecla `'` (Backquote, à esquerda do 1 no ABNT2). A tecla **Q** também funciona, para teclados em que `'` fica em outro lugar. |
+| Golpe pesado (perk Carregado) | O preparo passa a 1 s e o golpe causa 110, sem precisar segurar a tecla. |
+| Muralha | Usar a skill de novo encerra a postura antes dos 4 s. |
+| Fabricar e Aprimorar | Andar também cancela a canalização (a energia volta), além de levar dano. |
+| Mapa | A banca fica à esquerda do pátio, entre o quartel e o trono. Cada lado tem 8 pontos de moedas nas rotas, 2 túmulos e 1 baú no acampamento de esqueletos (100 de ouro, volta a cada 120 s). As torres de defesa ficam logo atrás do portão principal. |
+| Tecla da mochila | **I** (o Tab continua sendo o placar). Skills e perks: **K**. |

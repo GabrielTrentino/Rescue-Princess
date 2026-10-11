@@ -20,6 +20,7 @@ const params = new URLSearchParams(location.search);
 const ui = {
   pendingClass: null,
   respawnOpen: false,
+  lock() { lock(); },
   showRespawn(text) {
     this.respawnOpen = true;
     this.confirmRespawn = false;
@@ -62,7 +63,8 @@ const ui = {
     $('endSub').textContent = win ? 'A Princesa Azul está a salvo no seu trono. O reino celebra!' : 'O time vermelho levou a princesa deles para casa primeiro.';
     const p = g.player;
     $('endStats').innerHTML = `<table><tr><th>Placar</th><th>Seus abates</th><th>Mortes</th><th>Resgates</th><th>Banquetes</th></tr>
-      <tr><td>${g.score[0]} x ${g.score[1]}</td><td>${p.kills}</td><td>${p.deaths}</td><td>${p.rescues}</td><td>${p.feeds}</td></tr></table>`;
+      <tr><td>${g.score[0]} x ${g.score[1]}</td><td>${p.kills}</td><td>${p.deaths}</td><td>${p.rescues}</td><td>${p.feeds}</td></tr></table>
+      <p>Nível final: <b>${p.level}</b> · Ouro: <b>${Math.floor(p.gold)}</b></p>`;
     $('endScreen').classList.remove('hidden');
     $('classMenu').classList.add('hidden');
     this.respawnOpen = false;
@@ -80,7 +82,7 @@ function renderClasses(container, selected, onPick) {
     const c = CLASSES[k];
     const b = document.createElement('button');
     b.className = 'cls' + (k === selected ? ' sel' : '');
-    b.innerHTML = `<span class="hk">${c.hotkey}</span><div class="ic">${c.icon}</div><div class="nm">${c.name}</div><div class="ds">${c.desc}</div><div class="st">${c.stats}<br>Vida ${c.hp} · Q: ${c.ability.name}</div>`;
+    b.innerHTML = `<span class="hk">${c.hotkey}</span><div class="ic">${c.icon}</div><div class="nm">${c.name}</div><div class="ds">${c.desc}</div><div class="st">${c.stats}<br>Vida ${c.hp}${c.canCarry === false ? " · não carrega a princesa" : ""}</div>`;
     b.onclick = () => {
       container.querySelectorAll('.cls').forEach(e => e.classList.remove('sel'));
       b.classList.add('sel');
@@ -92,7 +94,7 @@ function renderClasses(container, selected, onPick) {
 }
 addEventListener('keydown', (e) => {
   const n = parseInt(e.key, 10);
-  if (n >= 1 && n <= 5) {
+  if (n >= 1 && n <= 8) {
     const key = CLASS_KEYS[n - 1];
     const vis = !$('classMenu').classList.contains('hidden') ? $('respawnClasses') : !$('menu').classList.contains('hidden') ? $('menuClasses') : null;
     if (vis) vis.querySelector(`[data-key="${key}"]`)?.click();
@@ -108,14 +110,14 @@ function lock() {
 
 document.addEventListener('pointerlockchange', () => {
   game.locked = document.pointerLockElement === canvas;
-  if (!game.locked && game.running && !game.over && !ui.respawnOpen && !ui.changeOpen) {
+  if (!game.locked && game.running && !game.over && !ui.respawnOpen && !ui.changeOpen && !(game.menus && game.menus.isOpen)) {
     game.paused = true;
     game.pc.clearInput();
     $('pause').classList.remove('hidden');
   }
 });
 
-canvas.addEventListener('click', () => { if (game.running && !game.paused && !game.locked && !ui.respawnOpen && !ui.changeOpen) lock(); });
+canvas.addEventListener('click', () => { if (game.running && !game.paused && !game.locked && !ui.respawnOpen && !ui.changeOpen && !(game.menus && game.menus.isOpen)) lock(); });
 
 $('btnPlay').onclick = () => {
   initAudio();
@@ -161,7 +163,7 @@ loadAll((p) => { $('loadFill').style.width = (p * 100).toFixed(0) + '%'; }).then
   if (params.has('autostart')) {
     selectedClass = params.get('class') || 'knight';
     $('menu').classList.add('hidden');
-    game.start({ difficulty: 'normal', teamSize: parseInt(params.get('team') || '6', 10), scoreToWin: 2 }, selectedClass);
+    game.start({ difficulty: params.get('diff') || 'normal', teamSize: parseInt(params.get('team') || '6', 10), scoreToWin: parseInt(params.get('score') || '2', 10) }, selectedClass);
     game.locked = true;
   }
 }).catch((e) => {

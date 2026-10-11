@@ -122,3 +122,17 @@ export function instanced(key, transforms, { castShadow = true, receiveShadow = 
   });
   return group;
 }
+
+/** Deixa uma arma com aparência de aço (a espada do pacote de peças vem cor de madeira). */
+export function steelify(root) {
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    o.material = o.material.clone();
+    o.material.map = null;
+    o.material.color = new THREE.Color(0xb9c0cc);
+    o.material.metalness = 0.55;
+    o.material.roughness = 0.35;
+    o.material.needsUpdate = true;
+  });
+  return root;
+}

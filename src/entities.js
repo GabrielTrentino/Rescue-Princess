@@ -1,16 +1,44 @@
-// Personagens: jogador, bots e monstros. Modelo animado, atributos, movimento e estado.
+// Personagens: jogador, bots, monstros e invocações. Modelo animado, atributos, status, movimento e estado.
 import * as THREE from 'three';
-import { Assets, cloneModel, uniqueMaterials } from './assets.js';
-import { CLASSES, MONSTERS, TEAM, TEAM_HEX, TEAM_TINT, CHAR_RADIUS, MAX_FAT } from './config.js';
+import { Assets, cloneModel, uniqueMaterials, steelify } from './assets.js';
+import { CLASSES, MONSTERS, TEAM, TEAM_HEX, TEAM_TINT, CHAR_RADIUS, MAX_FAT, RARITY, ATTRS } from './config.js';
 import { heightAt, inWater, BOUNDS } from './world.js';
-
-const IDLE = { knight: 'Idle_A', barbarian: 'Melee_2H_Idle', ranger: 'Ranged_Bow_Idle', mage: 'Idle_B', rogue: 'Idle_A' };
-const OFFHAND_SIDE = { ranger: 'l' };
 
 const markerGeo = new THREE.OctahedronGeometry(0.22, 0);
 const barGeo = new THREE.PlaneGeometry(1, 1);
 
 let NEXT_ID = 1;
+
+export function freshStatus() {
+  return {
+    slowUntil: 0, slowMul: 1,
+    speedUntil: 0, speedMul: 1, // fumaça
+    stepUntil: 0, stepMul: 1, // passo leve
+    marchUntil: 0,
+    invisUntil: 0, veil: false, veilPerk: null,
+    stunUntil: 0, rootUntil: 0, knockImmuneUntil: 0,
+    dmgUpUntil: 0,
+    furyUntil: 0, furyPerk: null,
+    ironUntil: 0, ironPerk: null,
+    oathUntil: 0, oathPerk: null,
+    counterUntil: 0,
+    guardUntil: 0,
+    windupUntil: 0,
+    tempHp: 0, tempHpUntil: 0,
+    shield: 0, shieldUntil: 0, shieldReflect: 0,
+    hotUntil: 0, hotRate: 0, hotSrc: null,
+    markedUntil: 0,
+    poison: null, bleed: null,
+    bladePoison: null, bladeBleed: null,
+    backstabUntil: 0, backstabCarrier: false,
+    parryUntil: 0, parryPerk: null,
+    wallUntil: 0, wallPerk: null, wallTick: 0,
+    huntUntil: 0, huntPerk: null,
+    silentUntil: 0,
+    axeOutUntil: 0,
+    resUntil: 0, resBonusUntil: 0,
+  };
+}
 
 export class Character {
   constructor(game, { team, classKey = null, monsterType = null, isPlayer = false, name = '' }) {
@@ -29,16 +57,19 @@ export class Character {
     this.radius = CHAR_RADIUS;
     this.alive = false;
     this.hp = 1; this.maxHp = 1;
-    this.cd = { attack: 0, alt: 0, ability: 0 };
-    this.status = { slowUntil: 0, slowMul: 1, invisUntil: 0, speedUntil: 0, speedMul: 1 };
+    this.cd = { attack: 0 };
+    this.st = freshStatus();
     this.blocking = false;
     this.carrying = null;
     this.food = false;
     this.dash = null;
+    this.leap = null;
+    this.channel = null;
     this.kills = 0; this.deaths = 0; this.rescues = 0; this.feeds = 0;
     this.respawnAt = 0;
     this.lastHurt = -10;
     this.lastAttacker = null;
+    this.dmgBy = new Map();
     this.onGround = true;
     this.vy = 0;
     this.model = null;
@@ -48,6 +79,15 @@ export class Character {
     this.once = null;
     this.charge = 0;
     this.home = null;
+    // progressão e economia (não usados por monstros)
+    this.level = 1; this.xp = 0; this.builds = {};
+    this.gold = 0;
+    this.weapon = null; // null = arma básica
+    this.backpack = [];
+    // Mercador de Almas
+    this.mode = 'merchant';
+    this.energy = 30; this.souls = 0;
+    this.modeCd = 0;
     if (monsterType) {
       this.monster = MONSTERS[monsterType];
       this.classKey = null;
@@ -61,14 +101,48 @@ export class Character {
   get displayName() { return this.isPlayer ? 'Você' : this.name; }
   get eyeY() { return this.pos.y + 2.05; }
   get chest() { return new THREE.Vector3(this.pos.x, this.pos.y + 1.3, this.pos.z); }
+  get isMerchant() { return this.classKey === 'merchant'; }
+  get backpackSize() { return this.cls ? this.cls.backpack : 0; }
 
   setClass(key) {
+    const old = this.classKey;
     this.classKey = key;
-    this.maxHp = CLASSES[key].hp;
+    // arma de outra classe vai para a mochila
+    if (old && old !== key && this.weapon && this.weapon.cls !== key) {
+      if (this.backpack.length < CLASSES[key].backpack) this.backpack.push(this.weapon);
+      this.weapon = null;
+    }
+    while (this.backpack.length > CLASSES[key].backpack) this.backpack.pop();
+    this.mode = 'merchant';
+    this.recalcStats();
     if (!this.alive) this.hp = this.maxHp;
-    else this.hp = Math.min(this.hp, this.maxHp);
-    this.cd.attack = this.cd.alt = this.cd.ability = 0;
-    if (!this.isPlayer) this.buildModel();
+    for (const k in this.cd) this.cd[k] = 0;
+    if (!this.isPlayer && this.game.scene) this.buildModel();
+  }
+
+  attackDef() {
+    const c = this.cls;
+    if (this.isMerchant && this.mode === 'summoner') return c.attackSummoner;
+    return c.attack;
+  }
+
+  // ------------------------------------------------------------ arma equipada
+  attrValue(key) {
+    const w = this.weapon;
+    if (!w || w.attr !== key) return 0;
+    return ATTRS[key].per * w.lvl;
+  }
+  rarityDmg() { return this.weapon ? RARITY[this.weapon.rarity].dmg : 0; }
+  recalcStats() {
+    if (this.isMonster) return;
+    const ratio = this.maxHp > 1 ? this.hp / this.maxHp : 1;
+    this.maxHp = this.cls.hp + this.attrValue('hp');
+    if (this.alive) this.hp = Math.max(1, Math.min(this.maxHp, Math.round(this.maxHp * ratio)));
+  }
+  equip(item) {
+    this.weapon = item;
+    this.recalcStats();
+    if (this.model) this.refreshWeaponGlow();
   }
 
   // ------------------------------------------------------------ modelo
@@ -77,29 +151,22 @@ export class Character {
     if (this.model) scene.remove(this.model);
     const key = this.isMonster ? this.monsterType : this.cls.model;
     const m = cloneModel(key, { skinned: true });
-    uniqueMaterials(m, this.isMonster ? undefined : TEAM_TINT[this.team]);
+    const tint = this.isMonster ? (this.summon ? (this.team === TEAM.BLUE ? 0xb8ccff : 0xffc0b8) : undefined) : TEAM_TINT[this.team];
+    uniqueMaterials(m, tint);
     m.traverse(o => { if (o.isMesh) { o.frustumCulled = false; } });
     this.mats = [];
     m.traverse(o => { if (o.isMesh) this.mats.push(o.material); });
+    // o alabardeiro usa o modelo do cavaleiro sem o escudo nas costas / o mercador sem o chapéu de maga
+    if (this.cls && this.cls.hideOffhand) m.traverse(o => { if (/shield/i.test(o.name)) o.visible = false; });
 
-    const handR = m.getObjectByName('handslotr');
-    const handL = m.getObjectByName('handslotl');
-    const wKey = this.isMonster ? this.monster.weapon : this.cls.weapon;
-    const oKey = this.isMonster ? null : this.cls.offhand;
-    const side = this.isMonster ? 'r' : (OFFHAND_SIDE[this.classKey] || 'r');
-    if (wKey) {
-      const w = cloneModel(wKey);
-      (side === 'l' ? handL : handR).add(w);
-      this.weaponObj = w;
-    }
-    if (oKey) {
-      const o = cloneModel(oKey);
-      handL.add(o);
-    }
-    // marcador do time acima da cabeça
-    if (!this.isMonster) {
+    this.handR = m.getObjectByName('handslotr');
+    this.handL = m.getObjectByName('handslotl');
+    this.weaponObj = null; this.offObj = null;
+    this.attachWeapons();
+    if (!this.isMonster || this.summon) {
       const mk = new THREE.Mesh(markerGeo, new THREE.MeshBasicMaterial({ color: TEAM_HEX[this.team] }));
       mk.position.y = 3.05;
+      if (this.summon) mk.scale.setScalar(0.6);
       m.add(mk);
       this.markerMesh = mk;
     }
@@ -126,7 +193,37 @@ export class Character {
     this.playLoop(this.idleAnim());
   }
 
-  idleAnim() { return this.isMonster ? 'Idle_B' : IDLE[this.classKey] || 'Idle_A'; }
+  attachWeapons() {
+    if (!this.handR) return;
+    if (this.weaponObj) this.weaponObj.parent && this.weaponObj.parent.remove(this.weaponObj);
+    if (this.offObj) this.offObj.parent && this.offObj.parent.remove(this.offObj);
+    this.weaponObj = this.offObj = null;
+    const wKey = this.isMonster ? this.monster.weapon : (this.isMerchant && this.mode === 'summoner' ? this.cls.weaponSummoner : this.cls.weapon);
+    const oKey = this.isMonster ? null : this.cls.offhand;
+    const side = this.isMonster ? 'r' : (this.cls.offhandSide || 'r');
+    if (wKey) {
+      const w = cloneModel(wKey);
+      if (wKey === 'sword_A' && !this.isMonster) steelify(w);
+      (side === 'l' ? this.handL : this.handR).add(w);
+      this.weaponObj = w;
+    }
+    if (oKey) { const o = cloneModel(oKey); this.handL.add(o); this.offObj = o; }
+    this.refreshWeaponGlow();
+  }
+
+  refreshWeaponGlow() {
+    const w = this.weaponObj;
+    if (!w) return;
+    const r = this.weapon ? RARITY[this.weapon.rarity] : null;
+    w.traverse(o => {
+      if (!o.isMesh) return;
+      if (!o.userData.ownMat) { o.material = o.material.clone(); o.userData.ownMat = true; }
+      o.material.emissive = new THREE.Color(r ? r.color : 0x000000);
+      o.material.emissiveIntensity = r ? 0.35 : 0;
+    });
+  }
+
+  idleAnim() { return this.isMonster ? 'Idle_B' : (this.cls.idle || 'Idle_A'); }
 
   action(name) {
     if (!this.actions[name]) {
@@ -145,7 +242,7 @@ export class Character {
     if (this.loopName === name) return;
     const prev = this.loopName ? this.action(this.loopName) : null;
     this.loopName = name;
-    if (this.once) return; // será retomado ao fim da animação única
+    if (this.once) return;
     a.reset().setLoop(THREE.LoopRepeat, Infinity).fadeIn(0.18).play();
     if (prev) prev.fadeOut(0.18);
   }
@@ -188,15 +285,20 @@ export class Character {
     this.yaw = yaw;
     this.pitch = 0;
     this.alive = true;
+    this.recalcStats();
     this.hp = this.maxHp;
-    this.cd.attack = this.cd.alt = 0;
-    this.cd.ability = 0;
-    this.status.slowUntil = this.status.invisUntil = this.status.speedUntil = 0;
+    this.cd.attack = 0;
+    const keepRes = this.st.resBonusUntil;
+    this.st = freshStatus();
+    this.st.resBonusUntil = keepRes;
     this.blocking = false;
     this.carrying = null;
     this.food = false;
     this.dash = null;
+    this.leap = null;
+    this.channel = null;
     this.charge = 0;
+    this.dmgBy.clear();
     this.spawnTime = this.game.time;
     if (this.model) {
       this.model.visible = true;
@@ -206,35 +308,74 @@ export class Character {
       this.playLoop(this.idleAnim());
       this.playOnce('Spawn_Ground', { speed: 1.4 });
       this.setOpacity(1);
+      this._invisVisual = false;
+      if (this.markerMesh) this.markerMesh.visible = true;
     }
   }
 
   forward(out = new THREE.Vector3()) { return out.set(Math.sin(this.yaw), 0, Math.cos(this.yaw)); }
 
-  isInvisible() { return this.game.time < this.status.invisUntil; }
+  has(key) { return this.game.time < this.st[key]; }
+  isInvisible() { return this.game.time < this.st.invisUntil; }
+  isStunned() { return this.game.time < this.st.stunUntil; }
+  isRooted() { return this.game.time < this.st.rootUntil; }
+  isPlanted() { return this.game.time < this.st.wallUntil; }
+  canAct() { return this.alive && !this.isStunned() && !this.channel; }
+
+  /** Quebra a invisibilidade (ataques). Véu: recarga começa agora. */
+  breakInvis() {
+    if (!this.isInvisible()) return;
+    this.st.invisUntil = this.game.time;
+    if (this.st.veil) {
+      this.st.veil = false;
+      this.game.combat.onVeilEnd(this);
+    }
+  }
 
   speed() {
+    const t = this.game.time, st = this.st;
+    if (t < st.stunUntil || t < st.rootUntil || t < st.wallUntil || this.channel) return 0;
     let s = this.isMonster ? this.monster.speed : this.cls.speed;
     if (this.carrying) {
       const carry = this.cls ? this.cls.carry : 0.7;
       s *= Math.max(0.55, carry - this.carrying.fat * 0.06);
     }
     if (this.blocking) s *= 0.5;
-    if (this.game.time < this.status.slowUntil) s *= this.status.slowMul;
-    if (this.game.time < this.status.speedUntil) s *= this.status.speedMul;
+    if (t < st.windupUntil) s *= 0.4;
+    if (t < st.slowUntil) s *= st.slowMul;
+    if (t < st.speedUntil) s *= st.speedMul;
+    if (t < st.stepUntil) s *= st.stepMul;
+    if (t < st.furyUntil) s *= 1.1;
+    if (t < st.marchUntil) s *= 1.4;
+    if (st.veil && st.veilPerk === 'A' && this.isInvisible()) s *= 1.2;
+    s *= 1 + this.attrValue('move');
     if (inWater(this.pos.x, this.pos.z)) s *= 0.6;
     return s;
+  }
+
+  /** Multiplicador da velocidade de ataque (recarga do ataque base é dividida por ele). */
+  attackSpeed() {
+    const t = this.game.time, st = this.st;
+    let k = 1 + this.attrValue('atkspd');
+    if (t < st.furyUntil && st.furyPerk === 'B') k += 0.4;
+    if (t < st.resUntil || t < st.resBonusUntil) k += 0.2;
+    return k;
   }
 
   /** Movimento com aceleração, colisão e gravidade. wish = direção desejada (x,z) com |wish|<=1 */
   move(wx, wz, dt, { sprint = false, jump = false } = {}) {
     const g = this.game;
+    if (this.isStunned() && this.dash) this.dash = null;
     if (this.dash) {
       this.dash.time -= dt;
       this.vel.x = this.dash.dir.x * this.dash.speed;
       this.vel.z = this.dash.dir.z * this.dash.speed;
       if (this.dash.onStep) this.dash.onStep(this, dt);
-      if (this.dash.time <= 0) this.dash = null;
+      if (this.dash && this.dash.time <= 0) {
+        const d = this.dash; this.dash = null;
+        if (d.onEnd) d.onEnd(this);
+        if (!this.leap) { this.vel.x *= 0.3; this.vel.z *= 0.3; }
+      }
     } else {
       let sp = this.speed() * (sprint ? 1.32 : 1);
       const tx = wx * sp, tz = wz * sp;
@@ -243,6 +384,9 @@ export class Character {
       this.vel.x += (tx - this.vel.x) * k;
       this.vel.z += (tz - this.vel.z) * k;
     }
+    if (this.isRooted() || this.isPlanted() || this.isStunned()) {
+      if (!this.dash) { this.vel.x *= Math.max(0, 1 - dt * 12); this.vel.z *= Math.max(0, 1 - dt * 12); }
+    }
     this.pos.x += this.vel.x * dt;
     this.pos.z += this.vel.z * dt;
     const ground = heightAt(this.pos.x, this.pos.z);
@@ -250,16 +394,23 @@ export class Character {
     this.pos.x = Math.max(-BOUNDS.x, Math.min(BOUNDS.x, this.pos.x));
     this.pos.z = Math.max(-BOUNDS.z, Math.min(BOUNDS.z, this.pos.z));
     const gh = heightAt(this.pos.x, this.pos.z);
-    if (jump && this.onGround) { this.vy = 9.5; this.onGround = false; }
+    if (jump && this.onGround && this.speed() > 0) { this.vy = 9.5; this.onGround = false; }
     if (!this.onGround || this.pos.y > gh + 0.05) {
       this.vy -= 26 * dt;
       this.pos.y += this.vy * dt;
-      if (this.pos.y <= gh) { this.pos.y = gh; this.vy = 0; this.onGround = true; }
+      if (this.pos.y <= gh) { this.pos.y = gh; this.vy = 0; this.onGround = true; this.land(); }
       else this.onGround = false;
-      // descer suavemente rampas
-      if (!this.onGround && this.vy <= 0 && this.pos.y - gh < 0.35 && !jump) { this.pos.y = gh; this.vy = 0; this.onGround = true; }
+      if (!this.onGround && this.vy <= 0 && this.pos.y - gh < 0.35 && !jump && !this.leap) { this.pos.y = gh; this.vy = 0; this.onGround = true; this.land(); }
     } else {
       this.pos.y = gh;
+    }
+  }
+
+  land() {
+    if (this.leap) {
+      const l = this.leap; this.leap = null; this.dash = null;
+      this.vel.x *= 0.2; this.vel.z *= 0.2;
+      l.onLand(this);
     }
   }
 
@@ -271,6 +422,7 @@ export class Character {
       m.depthWrite = o >= 1;
     }
     if (this.weaponObj) this.weaponObj.visible = o > 0.2;
+    if (this.offObj) this.offObj.visible = o > 0.2;
   }
 
   flash() { this.flashUntil = this.game.time + 0.12; }
@@ -279,17 +431,17 @@ export class Character {
     if (!this.model) return;
     const m = this.model;
     m.position.copy(this.pos);
-    // suaviza a rotação
     let d = this.yaw - m.rotation.y;
     d = Math.atan2(Math.sin(d), Math.cos(d));
     m.rotation.y += d * Math.min(1, dt * 14);
     if (!this.alive) return;
 
-    // animação de locomoção
     const hs = Math.hypot(this.vel.x, this.vel.z);
     if (!this.once || this.once.hold === false) {
       let loop = this.idleAnim(), ts = 1;
-      if (this.blocking) loop = 'Melee_Blocking';
+      if (this.isStunned()) loop = 'Hit_B';
+      else if (this.blocking || this.isPlanted()) loop = 'Melee_Blocking';
+      else if (this.channel) loop = 'Ranged_Magic_Spellcasting_Long';
       else if (hs > 0.8) {
         if (this.carrying || hs < 3.2) { loop = 'Walking_A'; ts = Math.max(0.6, hs / 3.4); }
         else { loop = 'Running_A'; ts = Math.max(0.7, hs / 6.6); }
@@ -297,8 +449,9 @@ export class Character {
       this.playLoop(loop, ts);
     }
 
-    // invisibilidade
-    if (this.isInvisible()) {
+    // invisibilidade (com piscada ao levar dano no Véu)
+    const blink = this.st.veil && this.game.time - this.lastHurt < 0.5;
+    if (this.isInvisible() && !blink) {
       const viewer = this.game.player;
       const ally = viewer && viewer.team === this.team;
       this.setOpacity(ally ? 0.35 : 0.06);
@@ -310,14 +463,12 @@ export class Character {
       this._invisVisual = false;
     }
 
-    // clarão de dano
     const flashing = this.game.time < (this.flashUntil || 0);
     if (flashing !== this._flashing) {
       for (const mat of this.mats) { mat.emissive = mat.emissive || new THREE.Color(); mat.emissive.setRGB(flashing ? 0.7 : 0, flashing ? 0.15 : 0, flashing ? 0.1 : 0); }
       this._flashing = flashing;
     }
 
-    // barra de vida
     const showBar = this.hp < this.maxHp && (this.game.time - this.lastHurt < 6 || this.isMonster) && !this.isInvisible();
     this.bar.visible = showBar;
     if (showBar) {
@@ -325,7 +476,6 @@ export class Character {
       this.barFg.scale.x = 1.24 * r;
       this.barFg.position.x = -0.62 * (1 - r);
       this.bar.quaternion.copy(camera.quaternion);
-      // compensa a rotação do modelo
       this.bar.quaternion.premultiply(m.quaternion.clone().invert());
     }
     if (this.markerMesh) this.markerMesh.rotation.y += dt * 2;

@@ -4,6 +4,11 @@ import { Assets, cloneModel, uniqueMaterials } from './assets.js';
 import { TEAM, TEAM_HEX, TEAM_NAME, PRINCESS_RETURN_TIME, MAX_FAT } from './config.js';
 import { heightAt } from './world.js';
 import { sfx } from './audio.js';
+import { addXp } from './progression.js';
+import { XP } from './config.js';
+
+/** Ladino e Mercador de Almas não podem pegar a princesa. */
+export function canCarry(ch) { return !!(ch && ch.cls && ch.cls.canCarry !== false && !ch.isMonster); }
 
 const PRINCESS_TINT = [0xd9c8ff, 0xffc4dc];
 
@@ -104,14 +109,15 @@ export class Princess {
   }
 
   pickUp(ch) {
-    if (ch.carrying || !ch.alive) return false;
+    if (ch.carrying || !ch.alive || !canCarry(ch)) return false;
     const wasCaptive = this.state === 'captive';
     this.state = 'carried';
     this.carrier = ch;
     ch.carrying = this;
     ch.blocking = false;
     if (ch.food) { ch.food = false; this.game.objectives.dropFood(ch); }
-    ch.status.invisUntil = Math.min(ch.status.invisUntil, this.game.time);
+    ch.breakInvis();
+    ch.channel = null;
     this.playLoop('Jump_Idle');
     sfx('pickup', this.game.combat.dist(ch));
     const who = ch.isPlayer ? 'Você' : ch.name;
@@ -153,9 +159,10 @@ export class Princess {
       if (g.time - this.dropTime > PRINCESS_RETURN_TIME) this.returnToCell();
       else {
         for (const o of g.characters) {
-          if (!o.alive || o.team !== this.captor) continue;
+          if (!o.alive || o.team !== this.captor || o.isMonster) continue;
           if (Math.hypot(o.pos.x - this.pos.x, o.pos.z - this.pos.z) < 1.8) {
             const who = o.isPlayer ? 'Você' : o.name;
+            addXp(o, XP.returnPrincess, 'princesa devolvida');
             g.feed(`<span class="${o.team === 0 ? 'b' : 'r'}">${who}</span> devolveu a <span class="g">${this.name}</span> à masmorra`);
             this.returnToCell(true);
             break;
@@ -224,6 +231,7 @@ export class Objectives {
     if (ch.carrying) { ch.carrying.drop(); return 'drop'; }
     const own = this.princessOf(ch.team);
     if (own.state !== 'carried' && own.state !== 'rescued' && Math.hypot(own.pos.x - ch.pos.x, own.pos.z - ch.pos.z) < 3) {
+      if (!canCarry(ch)) return 'nocarry';
       own.pickUp(ch); return 'pickup';
     }
     const captive = this.captiveOf(ch.team);
@@ -238,6 +246,7 @@ export class Objectives {
     if (!captive.feed()) return false;
     ch.food = false;
     ch.feeds++;
+    addXp(ch, XP.feed, 'banquete');
     sfx('eat', this.game.combat.dist(ch));
     const who = ch.isPlayer ? 'Você' : ch.name;
     this.game.feed(`<span class="${ch.team === 0 ? 'b' : 'r'}">${who}</span> alimentou a <span class="g">${captive.name}</span> (peso ${captive.fat}/${MAX_FAT})`);
@@ -250,7 +259,9 @@ export class Objectives {
     if (!ch.alive) return '';
     if (ch.carrying) return '<b>[E]</b> Soltar a princesa · leve-a ao <b>círculo do trono</b>';
     const own = this.princessOf(ch.team);
-    if (own.state !== 'carried' && own.state !== 'rescued' && Math.hypot(own.pos.x - ch.pos.x, own.pos.z - ch.pos.z) < 3) return '<b>[E]</b> Pegar a sua princesa';
+    if (own.state !== 'carried' && own.state !== 'rescued' && Math.hypot(own.pos.x - ch.pos.x, own.pos.z - ch.pos.z) < 3) {
+      return canCarry(ch) ? '<b>[E]</b> Pegar a sua princesa' : `O ${ch.cls.name} não pode carregar a princesa`;
+    }
     const captive = this.captiveOf(ch.team);
     if (ch.food && captive.state === 'captive' && Math.hypot(captive.pos.x - ch.pos.x, captive.pos.z - ch.pos.z) < 3.4) {
       return captive.fat >= MAX_FAT ? 'A prisioneira não aguenta comer mais' : '<b>[E]</b> Dar o banquete à prisioneira';

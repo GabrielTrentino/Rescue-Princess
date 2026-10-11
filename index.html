@@ -46,18 +46,28 @@
     <div id="prompt"></div>
     <div id="bigmsg"></div>
 
+    <div id="statusMsg"></div>
+    <div id="xpPop"></div>
+    <div id="channel" class="hidden"><div id="chFill"></div><span id="chText"></span></div>
+
     <div id="vitals">
+      <div id="buffs"></div>
       <div id="className">Cavaleiro</div>
       <div class="bar hp"><div id="hpFill"></div><span id="hpText">100</span></div>
       <div class="bar st"><div id="stFill"></div></div>
+      <div class="bar xp"><div id="xpFill"></div><span id="xpText"></span></div>
+      <div id="goldLine"><span id="gold">🪙 0</span><span id="pointsBadge"></span></div>
+      <div id="weaponLine"></div>
+      <div id="merchantBox" class="hidden">
+        <div id="modeLabel"></div>
+        <div class="bar en"><div id="enFill"></div><span id="enText"></span></div>
+        <div id="soulPips"></div>
+        <div id="vaultLine"></div>
+      </div>
       <div id="carry"></div>
     </div>
 
-    <div id="skills">
-      <div class="skill" id="skLMB"><div class="key">LMB</div><div class="sname"></div><div class="cd"></div></div>
-      <div class="skill" id="skRMB"><div class="key">RMB</div><div class="sname"></div><div class="cd"></div></div>
-      <div class="skill" id="skQ"><div class="key">Q</div><div class="sname"></div><div class="cd"></div></div>
-    </div>
+    <div id="skills"></div>
 
     <div id="scoreboard" class="hidden"></div>
   </div>
@@ -101,17 +111,17 @@
         <div class="cols">
           <ul>
             <li><b>WASD</b> mover · <b>Shift</b> correr · <b>Espaço</b> pular</li>
-            <li><b>Botão esquerdo</b> ataque · <b>Botão direito</b> habilidade secundária</li>
-            <li><b>Q</b> habilidade especial · <b>E</b> pegar / soltar / alimentar</li>
-            <li><b>B</b> trocar de classe (dentro do seu castelo)</li>
-            <li><b>Tab</b> placar · <b>Esc</b> pausar</li>
+            <li><b>Botão esquerdo</b> ataque base · <b>Botão direito</b> bloquear (Arqueira: mirar)</li>
+            <li><b>1</b> a <b>5</b> skills da classe · <b>K</b> escolher skills e perks</li>
+            <li><b>E</b> princesa, banquete, pegar itens e ouro, banca do mercador</li>
+            <li><b>I</b> mochila · <b>B</b> trocar de classe (no castelo) · <b>Tab</b> placar · <b>Esc</b> pausar</li>
+            <li>Mercador de Almas: <b>'</b> (ou <b>Q</b>) troca entre Mercador e Invocador</li>
           </ul>
           <ul>
-            <li>Sua princesa está presa na masmorra do castelo inimigo. Pegue-a com <b>E</b> e leve-a até o círculo do trono no seu castelo.</li>
-            <li>Quem carrega a princesa anda mais devagar e não ataca. Se morrer, ela cai no chão.</li>
-            <li>Encoste na princesa inimiga caída para devolvê-la à sua masmorra.</li>
-            <li>Banquetes aparecem pelo mapa. Leve-os à prisioneira no seu castelo para engordá-la: ela fica mais pesada e lenta para o inimigo carregar.</li>
-            <li>Esqueletos guardam acampamentos e atacam os dois times.</li>
+            <li>Sua princesa está presa no castelo inimigo. Pegue-a com <b>E</b> e leve-a até o círculo do trono no seu castelo. O Ladino e o Mercador de Almas não podem carregá-la.</li>
+            <li>Ganhe XP abatendo, alimentando a prisioneira e resgatando. Cada nível dá um ponto para liberar uma skill ou evoluí-la. Cada skill tem 2 perks e você escolhe um.</li>
+            <li>Ganhe ouro e compre armas com raridade na banca do castelo. Ao morrer, a arma cai no chão e perde um nível.</li>
+            <li>Banquetes engordam a prisioneira e deixam o inimigo mais lento ao carregá-la.</li>
           </ul>
         </div>
       </details>
@@ -126,6 +136,10 @@
       <div class="classes" id="respawnClasses"></div>
       <button id="btnClassOk" class="primary">Confirmar</button>
     </div>
+  </div>
+
+  <div id="modal" class="overlay hidden">
+    <div class="panel wide" id="modalBody"></div>
   </div>
 
   <div id="pause" class="overlay hidden">
