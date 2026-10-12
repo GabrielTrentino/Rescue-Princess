@@ -41,6 +41,7 @@ XP total por nível: 100, 250, 450, 700, 1.000, 1.350, 1.750, 2.200 e 2.700 (ní
 | **I** | Mochila e equipamento | Arma, capacete, peitoral e itens guardados. |
 | **E** | Interagir | Princesa, banquete, pegar itens e ouro, minerar (Mercador), abrir a banca, vender ao mercador. |
 | **G** | Usar item | Seringa na sua princesa (perto dela ou carregando), bomba numa torre inimiga (Ladino) ou contaminar um banquete (Ladino). Ver seção 6.4. |
+| **Shift** | Correr | Gasta fôlego. Se o fôlego zerar, só volta a correr depois de recuperar 35% da barra. |
 
 **Princesa:** o **Ladino**, o **Mercador** e o **Invocador** não podem pegar nem carregar a princesa. Eles podem atacar quem a carrega e encostar na princesa inimiga caída para devolvê-la.
 
@@ -160,7 +161,7 @@ São 10 classes. Os ataques base (botão esquerdo) das classes originais continu
 ### 4.5 Ladino
 
 - **Vida:** 105 · **Velocidade:** 8,4 · **Não pode pegar a princesa** (ver seção 2).
-- **Ataque base (esquerdo):** Facada rápida. Dano 20, recarga 0,34 s, dano triplo (60) pelas costas.
+- **Ataque base (esquerdo):** Garrada rápida (o Ladino luta com **garras** nas duas mãos). Dano 20, recarga 0,34 s, dano triplo (60) pelas costas.
 
 | Slot | Skill | Dano | Efeito | Duração | Recarga |
 |---|---|---|---|---|---|
@@ -442,7 +443,7 @@ O mercador abre o menu de obras com a skill 5; construir só funciona dentro da 
 | Quartel | Tempo de renascimento −1 s (de 7 s até 4 s). | 3 | 250 + 20 · 500 + 35 · 900 + 50 |
 | Ossuário | +1 no limite de cada tipo de invocação do Invocador. | 2 | 300 + 25 · 700 + 45 |
 | Estandarte | +10% de XP para todo o time. | 3 | 300 + 20 · 600 + 35 · 1000 + 50 |
-| Torres de defesa | Nível 1: uma torre do lado de fora do portão (15 de dano a cada 1,5 s, alcance 24 m, 300 de vida). Nível 2: duas torres. Nível 3: 25 de dano e 500 de vida. | 3 | 400 + 30 · 700 + 45 · 1100 + 60 |
+| Torres de defesa | Nível 1: uma torre do lado de fora do portão que atira **flechas** (15 de dano a cada 1,5 s, alcance 24 m, 300 de vida). Nível 2: duas torres. Nível 3: **canhão** (30 de dano em área de 3 m, a cada 2,4 s) e 500 de vida. | 3 | 400 + 30 · 700 + 45 · 1100 + 60 |
 | Tesouraria | +0,5 de ouro por segundo para cada jogador do time. | 2 | 350 + 25 · 800 + 45 |
 
 - As torres ficam **do lado de fora do portão**, cobrindo a estrada de acesso, e atiram em qualquer inimigo à vista no alcance. Podem ser destruídas (por dano ou pela bomba do Ladino), e reconstruir custa metade do preço.
@@ -473,6 +474,11 @@ O mercador abre o menu de obras com a skill 5; construir só funciona dentro da 
 | Mercador | Sem recargas. Aprimorar virou uma aba da Oficina (skill 1) e a skill 3 virou o Posto de suprimentos. Os perks Ourives e Refino viraram melhorias da Oficina individual. |
 | Oficina e Reino | A Oficina (forjas, sorte, ourives, refino, expositores) é individual de cada mercador. O Reino (vida, dano, armadura, velocidade) vale para o time todo, com preço progressivo. |
 | Tecla G | Usa a seringa ou a bomba, conforme o que estiver perto. |
+| Canhão de lançamento | Um por base, fora do portão. E para entrar; o ponto de queda é sorteado no próprio lado, entre 14 e 48 unidades do rio, sempre dentro do mapa. Recarga de 8 s; não funciona carregando a princesa. Os bots atacantes também usam. |
+| Entrepostos | Quatro torres de vigia (duas por lado) feitas com peças do Dungeon Pack: escada de madeira, piso no alto e parapeito. Só se sobe pela escada. |
+| Acerto | Projéteis usam uma cápsula de acerto de raio 0,95 (o corpo colide com 0,6). Tiros que batem na torre contam em qualquer altura. |
+| Seringa | No chão e na carroça do boticário, aparece como o frasco verde do Dungeon Pack. |
+| Ladino | Usa as garras (fistweapon_B do FantasyWeaponsBits) no lugar das adagas; o arremesso da skill 4 continua sendo de adaga. |
 | XP | Vale só dentro da partida. |
 | Mercador e Invocador | Viraram duas classes separadas (antes era o Mercador de Almas com dois modos). |
 | Cura | Saiu da Maga e virou a classe Sacerdote. A Maga ganhou a Lança de gelo. |

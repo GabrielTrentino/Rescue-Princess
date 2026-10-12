@@ -229,6 +229,7 @@ export class HUD {
     const extra = (ch.st.shield > 0 && g.time < ch.st.shieldUntil ? ch.st.shield : 0) + (ch.st.tempHp > 0 && g.time < ch.st.tempHpUntil ? ch.st.tempHp : 0);
     this.el.hpText.textContent = Math.max(0, Math.ceil(ch.hp)) + ' / ' + ch.maxHp + (extra ? ` (+${Math.ceil(extra)})` : '');
     this.el.stFill.style.width = (g.pc.stamina * 100) + '%';
+    this.el.stFill.parentElement.classList.toggle('tired', g.pc.exhausted);
     this.root.classList.toggle('lowhp', ch.alive && r < 0.3);
     const c = CLASSES[ch.classKey];
     this.el.className.innerHTML = `${c.icon} ${c.name} <span class="lvl">Nível ${ch.level}</span>`;
@@ -299,7 +300,7 @@ export class HUD {
     this.el.carry.textContent = carry;
 
     const op = O.promptFor(ch), ia = op ? E.itemAction(ch) : null;
-    let prompt = op ? (ia ? `${op} &nbsp;·&nbsp; ${ia.label}` : op) : E.promptFor(ch);
+    let prompt = g.cannons.promptFor(ch) || (op ? (ia ? `${op} &nbsp;·&nbsp; ${ia.label}` : op) : E.promptFor(ch));
     if (!prompt && g.world.castles[ch.team].inside(ch.pos.x, ch.pos.z) && ch.alive) prompt = '<b>[B]</b> Trocar de classe';
     this.el.prompt.innerHTML = prompt;
     if (g.time > this.bigUntil) this.el.big.classList.remove('show');

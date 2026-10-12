@@ -23,9 +23,13 @@ export const DIFFICULTY = {
 // Altura dos personagens KayKit ~2.4 unidades. 1 unidade ~ 0.75 m.
 export const EYE_HEIGHT = 2.05;
 export const CHAR_RADIUS = 0.6;
+// raio da cápsula de acerto de projéteis (maior que o de colisão, para os tiros não passarem raspando)
+export const HIT_RADIUS = 0.95;
 export const RESPAWN_TIME = 7;
 export const PRINCESS_RETURN_TIME = 25;
 export const MAX_FAT = 5;
+// Canhão de lançamento (um por base): arremessa para o próprio lado, entre zMin e zMax de distância do rio.
+export const CANNON = { useRange: 3.4, cooldown: 8, flightTime: 1.6, peak: 16, zMin: 14, zMax: 48 };
 
 // ------------------------------------------------------------------ classes
 // armor: armadura própria da classe (soma com capacete e peitoral). Redução de dano = armadura / (armadura + 100).
@@ -67,10 +71,10 @@ export const CLASSES = {
   rogue: {
     key: 'rogue', name: 'Ladino', icon: '🗡️', hotkey: 5,
     model: 'Rogue_Hooded', hp: 105, speed: 8.4, carry: 0, canCarry: false, backpack: 4, armor: 15,
-    weapon: 'dagger', offhand: 'dagger', block: 0.5, rmb: 'block', idle: 'Idle_A',
-    desc: 'Rápido e furtivo. Facadas pelas costas causam dano triplo. Não pode carregar a princesa.',
+    weapon: 'fistweapon_B', offhand: 'fistweapon_B', weaponFit: { s: 1.8, r: [Math.PI / 2, 0, Math.PI], rl: [Math.PI / 2, 0, 0], p: [0, 0.05, 0] }, block: 0.5, rmb: 'block', idle: 'Idle_A',
+    desc: 'Rápido e furtivo, luta com garras. Golpes pelas costas causam dano triplo. Não pode carregar a princesa.',
     stats: 'Muito rápido · Assassino',
-    attack: { type: 'melee', name: 'Facada', icon: '🔪', damage: 20, range: 2.9, arc: 1.0, cooldown: 0.34, hitDelay: 0.12, backstab: 3, anim: 'Melee_Dualwield_Attack_Stab', swing: 'stab' },
+    attack: { type: 'melee', name: 'Garrada', icon: '🐾', damage: 20, range: 2.9, arc: 1.0, cooldown: 0.34, hitDelay: 0.12, backstab: 3, anim: 'Melee_Dualwield_Attack_Stab', swing: 'stab' },
   },
   halberdier: {
     key: 'halberdier', name: 'Alabardeiro', icon: '🔱', hotkey: 6,
@@ -275,12 +279,13 @@ export const WORKS = {
   barracks: { name: 'Quartel', desc: 'Tempo de renascimento −1 s por nível (de 7 s até 4 s).', costs: [[250, 20], [500, 35], [900, 50]] },
   ossuary: { name: 'Ossuário', desc: '+1 no limite de cada tipo de invocação do Invocador por nível.', costs: [[300, 25], [700, 45]] },
   banner: { name: 'Estandarte', desc: '+10% de XP para todo o time por nível.', costs: [[300, 20], [600, 35], [1000, 50]] },
-  towers: { name: 'Torres de defesa', desc: 'Torres do lado de fora do portão. Nível 1: uma torre. Nível 2: duas torres. Nível 3: 25 de dano e 500 de vida.', costs: [[400, 30], [700, 45], [1100, 60]] },
+  towers: { name: 'Torres de defesa', desc: 'Torres do lado de fora do portão. Nível 1: uma torre. Nível 2: duas torres. Nível 3: canhão (30 de dano em área) e 500 de vida.', costs: [[400, 30], [700, 45], [1100, 60]] },
   treasury: { name: 'Tesouraria', desc: '+0,5 de ouro por segundo para cada jogador do time por nível.', costs: [[350, 25], [800, 45]] },
 };
 export const WORK_KEYS = Object.keys(WORKS);
 export const WORK_TIME = 20;
 export const TOWER = {
   range: 24, interval: 1.5,
-  levels: [null, { damage: 15, hp: 300 }, { damage: 15, hp: 300 }, { damage: 25, hp: 500 }],
+  // níveis 1 e 2: flechas; nível 3: canhão (bala com explosão)
+  levels: [null, { damage: 15, hp: 300, shot: 'arrow' }, { damage: 15, hp: 300, shot: 'arrow' }, { damage: 30, hp: 500, shot: 'cannon', splash: 3, interval: 2.4 }],
 };

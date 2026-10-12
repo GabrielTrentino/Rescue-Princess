@@ -7,6 +7,7 @@ import { Combat } from './combat.js';
 import { Effects } from './effects.js';
 import { Objectives } from './objectives.js';
 import { Economy } from './economy.js';
+import { Cannons } from './cannon.js';
 import { Menus } from './menus.js';
 import { BotAI, MonsterAI } from './ai.js';
 import { PlayerController } from './player.js';
@@ -67,6 +68,7 @@ export class Game {
     this.menus.close(true);
     this.objectives = new Objectives(this);
     this.economy = new Economy(this);
+    this.cannons = new Cannons(this);
 
     // bots
     const n = this.settings.teamSize;
@@ -301,6 +303,7 @@ export class Game {
     }
     this.combat.update(dt);
     this.economy.update(dt);
+    this.cannons.update(dt);
     this.objectives.update(dt);
     this.effects.update(dt);
     this.world.update(dt);

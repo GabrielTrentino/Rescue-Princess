@@ -81,6 +81,7 @@ class Tower {
     this.pos = pos.clone();
     this.vel = new THREE.Vector3();
     this.radius = 1.6;
+    this.hitRadius = 2.1; this.hitHeight = 8; // cápsula de acerto dos projéteis
     this.yaw = 0;
     this.st = freshStatus();
     this.dmgBy = new Map();
@@ -147,11 +148,21 @@ class Tower {
       if (g.col.los(e.x, e.y, e.z, o.pos.x, o.pos.y + 1.3, o.pos.z, 0)) { bd = d; best = o; }
     }
     if (!best) return;
-    this.nextShot = g.time + TOWER.interval;
+    const L = TOWER.levels[this.level];
+    this.nextShot = g.time + (L.interval || TOWER.interval);
     const origin = eye(best);
-    const tgt = new THREE.Vector3(best.pos.x, best.pos.y + 1.2, best.pos.z).addScaledVector(best.vel, bd / 30 * 0.5);
-    C.projectile(this, 'bolt', origin, tgt.sub(origin).normalize(), { speed: 30, damage: TOWER.levels[this.level].damage, range: TOWER.range + 6 });
-    sfx('fire', C.dist(this));
+    // mira com antecipação do movimento do alvo
+    const speed = L.shot === 'cannon' ? 40 : 60;
+    const tt = origin.distanceTo(best.pos) / speed;
+    const tgt = new THREE.Vector3(best.pos.x, best.pos.y + (L.shot === 'cannon' ? 0.8 : 1.3), best.pos.z).addScaledVector(best.vel, tt);
+    const dir = tgt.sub(origin).normalize();
+    if (L.shot === 'cannon') {
+      C.projectile(this, 'cannon', origin, dir, { speed, damage: L.damage, range: TOWER.range + 8, splash: L.splash });
+      sfx('boom', C.dist(this));
+    } else {
+      C.projectile(this, 'arrow', origin, dir, { speed, damage: L.damage, range: TOWER.range + 8 });
+      sfx('bow', C.dist(this));
+    }
   }
 }
 
@@ -174,25 +185,18 @@ function armorMesh(kind, color) {
   }
   return g;
 }
+/** Modelo da seringa no chão: o frasco verde do Dungeon Pack. */
 export function syringeMesh() {
   const g = new THREE.Group();
-  const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.6, 12), new THREE.MeshStandardMaterial({ color: 0xd8fff0, transparent: true, opacity: 0.7, roughness: 0.1 }));
-  const liquid = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.4, 10), new THREE.MeshBasicMaterial({ color: 0x5aff8a }));
-  liquid.position.y = -0.06;
-  const plunger = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.05, 12), new THREE.MeshStandardMaterial({ color: 0xeeeeee }));
-  plunger.position.y = 0.38;
-  const needle = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.32, 6), new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.9, roughness: 0.2 }));
-  needle.position.y = -0.46;
-  g.add(glass, liquid, plunger, needle);
-  g.rotation.z = Math.PI / 2.4;
-  g.position.y = 0.35;
+  const b = cloneModel('bottle_A_green'); b.scale.setScalar(0.9); g.add(b);
+  const glow = new THREE.PointLight(0x5aff8a, 4, 4, 2); glow.position.y = 0.6; g.add(glow);
   return g;
 }
 function itemMesh(item, scale = 0.8) {
   const k = itemKind(item), col = RARITY[item.rarity].color;
   if (k !== 'weapon') return armorMesh(k, col);
   const m = cloneModel(CLASSES[item.cls].weapon);
-  m.scale.setScalar(scale);
+  m.scale.setScalar(scale * (CLASSES[item.cls].weaponFit ? CLASSES[item.cls].weaponFit.s : 1));
   m.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.emissive = new THREE.Color(col); o.material.emissiveIntensity = 0.45; } });
   return m;
 }
@@ -900,6 +904,7 @@ export class Economy {
     const grp = new THREE.Group();
     const crate = cloneModel('crate_A_big'); crate.scale.setScalar(3.5); grp.add(crate);
     const barrel = cloneModel('barrel'); barrel.scale.setScalar(6); barrel.position.set(1.4, 0, 0.6); grp.add(barrel);
+    for (const [bx, bz, k] of [[-0.4, 0.2, 'bottle_A_green'], [0.3, -0.3, 'bottle_B_green'], [0.5, 0.5, 'bottle_A_green']]) { const b = cloneModel(k); b.scale.setScalar(0.8); b.position.set(bx, 0.74, bz); grp.add(b); }
     const green = new THREE.MeshBasicMaterial({ color: 0x5aff8a });
     const cross = new THREE.Group();
     cross.add(new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.28, 0.28), green), new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.9, 0.28), green));

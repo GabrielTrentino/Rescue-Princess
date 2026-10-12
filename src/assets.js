@@ -10,7 +10,7 @@ const LIST = {
     'Skeleton_Warrior.glb', 'Skeleton_Minion.glb', 'Skeleton_Rogue.glb', 'Skeleton_Mage.glb'],
   anims: ['Rig_Medium_General.glb', 'Rig_Medium_MovementBasic.glb', 'Rig_Medium_CombatMelee.glb', 'Rig_Medium_CombatRanged.glb'],
   weapons: ['sword_1handed', 'shield_round_color', 'shield_badge_color', 'axe_2handed', 'bow_withString', 'arrow_bow', 'staff',
-    'dagger', 'spellbook_open', 'sword_A', 'hammer_B', 'halberd', 'staff_B', 'arrow_A'].map(n => n + '.gltf'),
+    'dagger', 'spellbook_open', 'sword_A', 'hammer_B', 'halberd', 'staff_B', 'arrow_A', 'fistweapon_B'].map(n => n + '.gltf'),
   hex: ['building_castle_blue', 'building_castle_red', 'building_tower_A_blue', 'building_tower_A_red',
     'building_tower_catapult_blue', 'building_tower_catapult_red', 'building_barracks_blue', 'building_barracks_red',
     'building_archeryrange_blue', 'building_archeryrange_red', 'building_blacksmith_blue', 'building_blacksmith_red',
@@ -20,12 +20,13 @@ const LIST = {
     'building_bridge_A', 'building_destroyed', 'building_scaffolding', 'fence_wood_straight', 'wall_straight',
     'wall_straight_gate', 'wall_corner_A_outside', 'barrel', 'crate_A_big', 'crate_long_A', 'flag_blue', 'flag_red',
     'tent', 'weaponrack', 'target', 'sack', 'resource_lumber', 'bucket_arrows',
-    'mountain_A_grass_trees', 'mountain_B_grass', 'hills_A_trees'].map(n => n + '.gltf'),
+    'mountain_A_grass_trees', 'mountain_B_grass', 'hills_A_trees', 'ladder', 'projectile_catapult', 'building_stage_A'].map(n => n + '.gltf'),
   forest: ['Tree_1_A_Color1', 'Tree_2_C_Color1', 'Tree_3_B_Color1', 'Tree_4_A_Color1', 'Tree_Bare_1_A_Color1',
     'Bush_1_E_Color1', 'Bush_2_D_Color1', 'Bush_3_B_Color1', 'Rock_1_J_Color1', 'Grass_2_C_Color1'].map(n => n + '.gltf'),
   dungeon: ['wall', 'wall_doorway', 'wall_corner', 'wall_gated', 'pillar_decorated', 'banner_patternA_blue',
     'banner_patternA_red', 'torch_mounted', 'chest_gold', 'plate_food_A', 'bed_decorated', 'floor_tile_large',
-    'barrel_large'].map(n => n + '.gltf'),
+    'barrel_large', 'bottle_A_green', 'bottle_B_green', 'stairs_wood', 'floor_wood_large', 'crates_stacked', 'keg',
+    'barrier', 'barrier_column', 'torch_lit', 'pillar'].map(n => n + '.gltf'),
 };
 
 export const Assets = { models: {}, clips: {} };

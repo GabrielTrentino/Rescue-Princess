@@ -3,7 +3,7 @@
 import {
   CLASSES, CLASS_KEYS, MONSTERS, MAX_FAT, PRINCESS_RETURN_TIME, RESPAWN_TIME, LEVEL_XP, MAX_LEVEL, XP, GOLD,
   RARITY, ATTRS, ARMOR, STALL, MERCHANT, FORGE, FORGE_KEYS, BOOSTS, BOOST_KEYS, BOOST_MAX, boostCost, WORKS, WORK_KEYS,
-  TOWER, ITEMS, APOTHECARY, SUPPLY, SUMMONER, WEAPON_GROUND_TIME,
+  TOWER, ITEMS, APOTHECARY, SUPPLY, SUMMONER, WEAPON_GROUND_TIME, CANNON,
 } from './config.js';
 import { SKILLS, cdOf, soulCost } from './skills.js';
 
@@ -35,10 +35,13 @@ function rules() {
         <li><b>WASD</b> mover · <b>Shift</b> correr · <b>Espaço</b> pular</li>
         <li><b>Botão esquerdo</b> ataque base · <b>Botão direito</b> bloquear (Arqueira: mirar; Invocador: Marcha)</li>
         <li><b>1</b> a <b>5</b> skills · <b>K</b> perks e evolução</li>
-        <li><b>E</b> princesa, banquete, itens, ouro, minerar, banca</li>
+        <li><b>E</b> princesa, banquete, itens, ouro, minerar, banca, canhão</li>
         <li><b>G</b> usar seringa ou bomba</li>
         <li><b>I</b> mochila · <b>B</b> trocar de classe (dentro do castelo) · <b>Tab</b> placar · <b>Esc</b> pausa</li>
       </ul>
+      <h3>Canhão e entrepostos</h3>
+      <p>Do lado de fora do portão de cada castelo há um <b>canhão</b>: com <b>E</b> você é arremessado para perto do meio do mapa, no seu lado do rio. Não dá para mirar: o ponto de queda é sorteado (recarga de ${CANNON.cooldown} s; não funciona carregando a princesa).</p>
+      <p>Pelo mapa há <b>entrepostos</b>: torres de vigia com escada e um segundo andar cercado por parapeito, bons para atirar de cima.</p>
       <h3>Progressão</h3>
       <p>Abates, assistências, banquetes, resgates, curas e obras dão XP. São ${MAX_LEVEL} níveis (${LEVEL_XP[MAX_LEVEL]} XP no total). As 5 skills já vêm liberadas; cada nível dá 1 ponto para escolher <b>um dos dois perks</b> de uma skill. Com os 5 perks escolhidos, os pontos evoluem skills para o <b>Nível II</b> (−20% de recarga; no Mercador, −20% de energia).</p>
       <h3>Times</h3>
@@ -105,7 +108,7 @@ function economy() {
         <li><b>Obras</b>: ${WORK_KEYS.map(k => WORKS[k].name).join(', ')}.</li>
       </ul>
       <h3>Torres de defesa</h3>
-      <p>Construídas pelo Mercador (obra Torres), ficam <b>do lado de fora do portão</b> e atiram em qualquer inimigo a até ${TOWER.range} m que esteja à vista. O Ladino pode destruí-las com uma bomba.</p>
+      <p>Construídas pelo Mercador (obra Torres), ficam <b>do lado de fora do portão</b> e atiram em qualquer inimigo a até ${TOWER.range} m que esteja à vista: <b>flechas</b> nos níveis 1 e 2 e <b>bala de canhão</b> com explosão no nível 3. O Ladino pode destruí-las com uma bomba.</p>
     </section>
   </div>`;
 }
@@ -138,7 +141,7 @@ function items() {
 
 function hidden() {
   const list = [
-    ['Facada pelas costas', 'O golpe do Ladino por trás causa dano triplo.'],
+    ['Garrada pelas costas', 'O golpe das garras do Ladino por trás causa dano triplo.'],
     ['Tiro na cabeça', 'Flechas na cabeça causam até +50% de dano. O capacete reduz esse bônus (mínimo +15%).'],
     ['Bloqueio só pela frente', 'Bloquear só reduz o dano de golpes que vêm da frente; ataques pelas costas e pelos lados passam inteiros.'],
     ['Peso persistente', 'O peso da princesa não volta a zero depois de um resgate: ela volta à cela com o mesmo peso. Só a seringa e o banquete contaminado o reduzem.'],
@@ -157,6 +160,10 @@ function hidden() {
     ['Reino para quem renasce', 'As melhorias do Reino valem também para quem troca de classe ou renasce depois da compra.'],
     ['Times sem Mercador', 'Se o time não tiver Mercador, um vendedor do castelo repõe a banca com peças comuns e, aos poucos, o estoque de seringas.'],
     ['Torres e invisibilidade', 'As torres precisam ver o alvo: não atiram através de paredes nem em quem está invisível.'],
+    ['Fôlego esgotado', 'Se o fôlego zerar, você só volta a correr depois de recuperar 35% da barra (a marca na barra mostra o ponto). Soltar o Shift não adianta.'],
+    ['Acerto dos projéteis', 'Os tiros usam uma área de acerto um pouco maior que o corpo, e acertar a torre em qualquer altura conta.'],
+    ['Canhão e princesa', 'O canhão não aceita quem está carregando a princesa. Durante o voo você ainda pode ser atingido.'],
+    ['Entrepostos', 'O parapeito impede quedas; a única saída é a escada (ou pular por ela). De baixo não dá para subir pelas paredes.'],
   ];
   return '<div class="cx-hidden">' + list.map(([t, d]) => `<div class="cx-h"><b>${t}</b><span>${d}</span></div>`).join('') + '</div>';
 }

@@ -101,7 +101,7 @@ export class BotAI {
     }
   }
 
-  reset() { this.target = null; this.nav.setGoal(null); this.mode = 'idle'; this.patrol = null; this.lane = undefined; this.rallied = false; this.rallyStart = 0; this.draw = null; this.roam = null; }
+  reset() { this.useCannon = Math.random() < 0.6; this.target = null; this.nav.setGoal(null); this.mode = 'idle'; this.patrol = null; this.lane = undefined; this.rallied = false; this.rallyStart = 0; this.draw = null; this.roam = null; }
 
   canSee(o, range) {
     const ch = this.ch, g = this.game;
@@ -238,6 +238,15 @@ export class BotAI {
     this.mode = 'attack';
     if (this.lane === undefined) this.lane = [-48, 0, 0, 48][Math.floor(Math.random() * 4)];
     const ownSide = ch.team === 0 ? ch.pos.z < -9 : ch.pos.z > 9;
+    // perto de casa: às vezes usa o canhão de lançamento para chegar mais rápido ao meio do mapa
+    const cn = g.world.castles[ch.team].cannon;
+    if (this.useCannon && cn && !this.rallied && (ch.cd.cannon || 0) <= 0 && g.world.castles[ch.team].nearWalls(ch.pos.x, ch.pos.z, 12)) {
+      this.mode = 'cannon';
+      const home = g.world.castles[ch.team];
+      // sai pelo portão (até passar dele) e só então vai ao canhão
+      const rz = ch.team === 0 ? ch.pos.z : -ch.pos.z, gz = ch.team === 0 ? home.gateOut.z : -home.gateOut.z;
+      return rz < gz - 3 ? T.copy(home.gateOut) : T.copy(cn.pos);
+    }
     const rally = T.set(this.lane, 0, ch.team === 0 ? -14 : 14);
     if (ownSide && !this.rallied) {
       if (dist2d(rally, ch.pos) < 9) {
@@ -299,6 +308,7 @@ export class BotAI {
       if (a) g.economy.useItem(ch);
     }
 
+    if (this.mode === 'cannon' && g.cannons.near(ch)) { g.cannons.launch(ch); this.goalAt = 0; }
     const own = g.objectives.princessOf(ch.team);
     if (!ch.carrying && canCarry(ch) && (own.state === 'captive' || own.state === 'dropped') && dist2d(own.pos, ch.pos) < 2.4) {
       own.pickUp(ch);

@@ -58,6 +58,15 @@ export function freshStatus() {
   };
 }
 
+/** Ajuste de escala/rotação de armas que não vêm do pacote dos personagens (ex.: garras do Ladino). */
+function fitWeapon(w, fit, left = false) {
+  if (!fit) return;
+  w.scale.setScalar(fit.s);
+  const r = left && fit.rl ? fit.rl : fit.r;
+  w.rotation.set(r[0], r[1], r[2]);
+  w.position.set(fit.p[0], fit.p[1], fit.p[2]);
+}
+
 export class Character {
   constructor(game, { team, classKey = null, monsterType = null, isPlayer = false, name = '' }) {
     this.id = NEXT_ID++;
@@ -260,10 +269,11 @@ export class Character {
     if (wKey) {
       const w = cloneModel(wKey);
       if (wKey === 'sword_A' && !this.isMonster) steelify(w);
+      fitWeapon(w, this.isMonster ? null : this.cls.weaponFit);
       (side === 'l' ? this.handL : this.handR).add(w);
       this.weaponObj = w;
     }
-    if (oKey) { const o = cloneModel(oKey); this.handL.add(o); this.offObj = o; }
+    if (oKey) { const o = cloneModel(oKey); fitWeapon(o, this.cls.weaponFit, true); this.handL.add(o); this.offObj = o; }
     this.refreshWeaponGlow();
   }
 
@@ -336,6 +346,7 @@ export class Character {
   spawn(pos, yaw = 0) {
     this.pos.copy(pos);
     this.pos.y = heightAt(pos.x, pos.z);
+    this.launch = null;
     this.vel.set(0, 0, 0);
     this.vy = 0;
     this.yaw = yaw;
@@ -420,6 +431,7 @@ export class Character {
 
   /** Movimento com aceleração, colisão e gravidade. wish = direção desejada (x,z) com |wish|<=1 */
   move(wx, wz, dt, { sprint = false, jump = false } = {}) {
+    if (this.launch) { this.game.cannons.fly(this); return; }
     const g = this.game;
     if (this.isStunned() && this.dash) this.dash = null;
     if (this.dash) {
@@ -447,9 +459,10 @@ export class Character {
     this.pos.z += this.vel.z * dt;
     const ground = heightAt(this.pos.x, this.pos.z);
     g.col.resolve(this.pos, this.radius, this.pos.y - ground);
+    // pisos dos entrepostos e escadas contam como chão
     this.pos.x = Math.max(-BOUNDS.x, Math.min(BOUNDS.x, this.pos.x));
     this.pos.z = Math.max(-BOUNDS.z, Math.min(BOUNDS.z, this.pos.z));
-    const gh = heightAt(this.pos.x, this.pos.z);
+    const gh = g.world.groundAt(this.pos.x, this.pos.z, this.pos.y);
     if (jump && this.onGround && this.speed() > 0) { this.vy = 9.5; this.onGround = false; }
     if (!this.onGround || this.pos.y > gh + 0.05) {
       this.vy -= 26 * dt;

@@ -2,7 +2,7 @@
 // dano com todos os modificadores, cura e mortes.
 import * as THREE from 'three';
 import { cloneModel } from './assets.js';
-import { TEAM, DIFFICULTY, SETTINGS, SUMMONER, XP } from './config.js';
+import { TEAM, DIFFICULTY, SETTINGS, SUMMONER, XP, HIT_RADIUS } from './config.js';
 import { heightAt } from './world.js';
 import { sfx } from './audio.js';
 import { skillList, cdOf, soulCost, energyCost, SKILL_BY_ID } from './skills.js';
@@ -16,6 +16,7 @@ export function hostile(a, b) {
 }
 
 // distância entre segmentos 3D (projétil x cápsula)
+let _segS = 0; // parâmetro (0..1) do ponto mais próximo no primeiro segmento
 function segSegDist2(p1, q1, p2, q2) {
   const d1 = _v.subVectors(q1, p1), d2 = _w.subVectors(q2, p2);
   const rx = p1.x - p2.x, ry = p1.y - p2.y, rz = p1.z - p2.z;
@@ -34,6 +35,7 @@ function segSegDist2(p1, q1, p2, q2) {
       else if (t > 1) { t = 1; s = Math.min(1, Math.max(0, (b - c) / a)); }
     }
   }
+  _segS = s;
   const cx = p1.x + d1.x * s - (p2.x + d2.x * t);
   const cy = p1.y + d1.y * s - (p2.y + d2.y * t);
   const cz = p1.z + d1.z * s - (p2.z + d2.z * t);
@@ -609,6 +611,7 @@ export class Combat {
     target.deaths++;
     target.blocking = false;
     target.dash = null; target.leap = null;
+    if (target.launch) { target.launch = null; target.pos.y = this.game.world.groundAt(target.pos.x, target.pos.z); }
     if (target.channel) g.economy.cancelChannel(target, true);
     this.endLink(target);
     const killer = source && source.summon ? source.summon.owner : source;
@@ -654,6 +657,7 @@ export class Combat {
     else if (kind === 'dagger') { mesh = new THREE.Group(); const d = cloneModel('dagger'); d.rotation.x = Math.PI / 2; d.scale.setScalar(1.2); mesh.add(d); }
     else if (kind === 'axe') { mesh = new THREE.Group(); const a = cloneModel('axe_2handed'); a.rotation.x = Math.PI / 2; a.scale.setScalar(0.9); mesh.add(a); }
     else if (kind === 'coin') { mesh = new THREE.Mesh(this.coinGeo, this.coinMat); mesh.scale.setScalar(1.3); }
+    else if (kind === 'cannon') { mesh = cloneModel('projectile_catapult'); mesh.scale.setScalar(3); }
     else if (kind === 'fire') {
       mesh = new THREE.Group();
       mesh.add(new THREE.Mesh(this.ballGeo, this.fireballMat));
@@ -833,11 +837,13 @@ export class Combat {
       for (const o of this.targets()) {
         if (!o.alive || o === p.owner || p.hit.has(o)) continue;
         if (o.team === p.team && !(p.hitsAllies && !o.isStructure && o.hp < o.maxHp)) continue;
-        const h = o.isStructure ? 6 : 2.1;
-        a.set(o.pos.x, o.pos.y + 0.4, o.pos.z); b.set(o.pos.x, o.pos.y + h, o.pos.z);
-        const r = o.radius + p.radius;
+        // cápsula de acerto: personagens usam HIT_RADIUS (maior que o raio de colisão); torres, a altura toda
+        const h = o.isStructure ? o.hitHeight || 8 : 2.35;
+        a.set(o.pos.x, o.pos.y + (o.isStructure ? 0 : 0.15), o.pos.z); b.set(o.pos.x, o.pos.y + h, o.pos.z);
+        const r = (o.isStructure ? o.hitRadius || o.radius : HIT_RADIUS) + p.radius;
         if (segSegDist2(prev, next, a, b) < r * r) {
-          const tt = prev.distanceTo(o.pos) / (prev.distanceTo(next) + 1e-6);
+          const len = prev.distanceTo(next) + 1e-6;
+          const tt = Math.max(0, _segS - (o.isStructure ? r / len : 0));
           if (tt < hitT) { hitT = tt; hitChar = o; }
         }
       }
@@ -845,6 +851,11 @@ export class Combat {
       const gh = heightAt(next.x, next.z);
       const hitWorld = (tw >= 0) || next.y < gh;
       let done = false;
+      // a torre tem colisor próprio: um tiro que bate nele conta como acerto na torre
+      if (hitChar && hitChar.isStructure && tw >= 0) {
+        const at = prev.clone().lerp(next, tw);
+        if (Math.hypot(at.x - hitChar.pos.x, at.z - hitChar.pos.z) < (hitChar.hitRadius || hitChar.radius) + 1) hitT = Math.min(hitT, tw);
+      }
       if (hitChar && (tw < 0 || hitT <= tw + 0.05)) {
         this.impact(p, next.clone(), hitChar);
         p.hit.add(hitChar);
@@ -890,6 +901,20 @@ export class Combat {
       return;
     }
     if (p.kind === 'bolt') g.effects.explosion(at, 1.2, 0xb46bff);
+    if (p.kind === 'cannon') {
+      // bala de canhão da torre (nível 3): explode e fere todos por perto
+      g.effects.explosion(at, p.splash, 0xc8b089);
+      sfx('boom', this.dist({ pos: at }));
+      for (const o of this.targets()) {
+        if (!o.alive || o.team === p.team || o.isStructure) continue;
+        const d = Math.hypot(o.pos.x - at.x, o.pos.z - at.z);
+        if (d < p.splash + HIT_RADIUS && Math.abs(o.pos.y + 1 - at.y) < 3) {
+          const k = o === target ? 1 : Math.max(0.45, 1 - d / (p.splash + 1));
+          this.damage(o, p.damage * k, p.owner, { dir: _v.subVectors(o.pos, at).setY(0).normalize().clone(), knock: 7 });
+        }
+      }
+      return;
+    }
     if (p.kind === 'ice') g.effects.sparks(at, 0xbff0ff, 8, 4);
     if (p.kind === 'holy') g.effects.sparks(at, 0xffe066, 6, 3);
     // luz sagrada em aliado: cura

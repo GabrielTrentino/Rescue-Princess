@@ -5,6 +5,7 @@ import { EYE_HEIGHT, RARITY } from './config.js';
 import { sfx } from './audio.js';
 import { skillList } from './skills.js';
 
+const STAMINA_MIN = 0.35; // fração do fôlego necessária para voltar a correr depois de zerar
 const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD'];
 
 export class PlayerController {
@@ -18,6 +19,7 @@ export class PlayerController {
     this.mdx = 0; this.mdy = 0;
     this.sens = 0.0022;
     this.stamina = 1;
+    this.exhausted = false;
     this.swingT = 1; this.swingDur = 0.35; this.swingKind = 'slash'; this.swingSide = 1;
     this.bobT = 0;
     this.shake = 0;
@@ -108,8 +110,9 @@ export class PlayerController {
     } else if (key === 'mage') {
       this.parts.main = add('staff', 0.62, -1.2, -1.25, -0.12, 0.6, -0.1, 0.5);
     } else if (key === 'rogue') {
-      this.parts.main = add('dagger', 0.5, -0.5, -0.9, -1.35, 0, -0.15, 0.62);
-      this.parts.off = add('dagger', -0.5, -0.5, -0.9, -1.35, 0, 0.15, 0.62);
+      // garras nas duas mãos
+      this.parts.main = add('fistweapon_B', 0.42, -0.42, -0.85, 0.3, -Math.PI / 2, 0, 1.05);
+      this.parts.off = add('fistweapon_B', -0.42, -0.42, -0.85, 0.3, -Math.PI / 2, 0, 1.05);
     } else if (key === 'halberdier') {
       this.parts.main = add('halberd', 0.6, -0.9, -1.25, -0.75, 0.35, -0.3, 0.44);
     } else if (key === 'swordsman') {
@@ -179,7 +182,10 @@ export class PlayerController {
       // mover cancela a canalização (fabricar / aprimorar)
       if (ch.channel && MOVE_KEYS.some(k => this.pressed[k])) g.economy.cancelChannel(ch);
       const wantSprint = (this.keys.ShiftLeft || this.keys.ShiftRight) && this.keys.KeyW && !ch.blocking;
-      const sprint = wantSprint && this.stamina > 0.05;
+      // ao zerar o fôlego, só volta a correr depois de recuperar STAMINA_MIN (evita "piques" com o Shift preso)
+      if (this.stamina <= 0) this.exhausted = true;
+      else if (this.exhausted && this.stamina >= STAMINA_MIN) this.exhausted = false;
+      const sprint = wantSprint && !this.exhausted;
       if (sprint && l > 0) this.stamina = Math.max(0, this.stamina - dt * 0.22);
       else this.stamina = Math.min(1, this.stamina + dt * (l > 0 ? 0.12 : 0.22));
       const wasGround = ch.onGround;
@@ -251,7 +257,7 @@ export class PlayerController {
       cam.rotation.x += (Math.random() - 0.5) * this.shake * 0.05;
       cam.rotation.y += (Math.random() - 0.5) * this.shake * 0.05;
     }
-    const targetFov = this.zoomed ? 42 : (this.keys.ShiftLeft && ch.alive && this.keys.KeyW && this.stamina > 0.05 ? 80 : 75);
+    const targetFov = this.zoomed ? 42 : (this.keys.ShiftLeft && ch.alive && this.keys.KeyW && !this.exhausted ? 80 : 75);
     this.fov += (targetFov - this.fov) * Math.min(1, dt * 10);
     if (Math.abs(cam.fov - this.fov) > 0.01) { cam.fov = this.fov; cam.updateProjectionMatrix(); }
 
@@ -292,6 +298,7 @@ export class PlayerController {
 
   interact() {
     const g = this.game, ch = this.ch;
+    if (g.cannons.near(ch)) { g.cannons.launch(ch); return; }
     const r = g.objectives.interact(ch);
     if (r === 'full') { g.announce('A prisioneira não aguenta comer mais', ''); return; }
     if (r === 'nocarry') { g.announce(`O ${ch.cls.name} não pode carregar a princesa`, 'Proteja quem a carrega'); return; }

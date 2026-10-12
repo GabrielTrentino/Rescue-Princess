@@ -293,3 +293,9 @@ button.codexbtn { font-size: 17px; padding: 11px 26px; background: #3a2a1a; bord
 .cx-h { background: rgba(255,255,255,.04); border-left: 3px solid var(--gold); border-radius: 4px; padding: 6px 10px; display: flex; flex-direction: column; gap: 2px; }
 .cx-h b { color: var(--gold); }
 @media (max-width: 760px) { .cx-cols, .cx-skills, .cx-hidden, .cx-perks { grid-template-columns: 1fr; } }
+
+/* fôlego esgotado: só volta a correr depois de recuperar 35% */
+.bar.st.tired #stFill { background: #a04a3a !important; }
+.bar.st.tired { box-shadow: 0 0 0 1px #c0503a; }
+.bar.st { position: relative; }
+.bar.st::after { content: ''; position: absolute; left: 35%; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,.35); }

@@ -52,6 +52,9 @@ const COIN_SPOTS = [[0, -112], [-48, -118], [48, -118], [-24, -56], [24, -56], [
 const TOMB_SPOTS = [[-36, -48, 0.4], [56, -126, -0.5]];
 // veios de minério (o Mercador minera com E)
 const VEIN_SPOTS = [[-40, -128], [38, -138], [-60, -64], [60, -62], [12, -88]];
+// entrepostos (torres de vigia com segundo andar): centro e lado da escada (+1 = leste, −1 = oeste), no referencial azul
+const OUTPOST_SPOTS = [[-22, -42, 1], [22, -120, -1]];
+const OUTPOST = { S: 1.25, half: 5, H: 5, stairLen: 7.5, stairHalfW: 2.05, stairOff: 2.5 };
 
 // estradas (polilinhas no mundo) — usadas para pintar o chão e evitar árvores
 const ROADS = [
@@ -94,6 +97,10 @@ export class World {
     this.chestSpawns = [];
     this.tombSpawns = [];
     this.veinSpawns = [];
+    this.floors = []; // superfícies onde dá para pisar acima do terreno (entrepostos)
+    this.ramps = [];  // escadas
+    this.outposts = [];
+    this.cannons = [];
     this.nav = new NavGraph(collision);
     this.time = 0;
   }
@@ -107,6 +114,7 @@ export class World {
     this.castles[TEAM.BLUE] = this.buildCastle(TEAM.BLUE);
     this.castles[TEAM.RED] = this.buildCastle(TEAM.RED);
     this.buildMiddle();
+    for (const team of [TEAM.BLUE, TEAM.RED]) for (const [x, z, side] of OUTPOST_SPOTS) this.buildOutpost(team, x, z, side);
     this.buildScenery();
     this.buildBorders();
     this.buildNav();
@@ -398,6 +406,8 @@ export class World {
       // torres de defesa do lado de fora do portão, cobrindo a estrada de acesso
       towerSpots: [v(-9, z0 + 33), v(9, z0 + 33)],
     };
+    // canhão de lançamento do lado de fora do portão
+    castle.cannon = this.buildCannon(team, -22, z0 + 28);
     castle.inside = (x, z) => {
       const p = this.tp(team, x, z);
       return p.x > -28 && p.x < 28 && p.z > z0 - 20 && p.z < z0 + 20;
@@ -407,6 +417,116 @@ export class World {
       return p.x > -28 - m && p.x < 28 + m && p.z > z0 - 20 - m && p.z < z0 + 20 + m;
     };
     return castle;
+  }
+
+  /** Altura do chão sob (x, z) para quem está na altura y: terreno, piso dos entrepostos ou escada. */
+  groundAt(x, z, y = -Infinity) {
+    let g = heightAt(x, z);
+    for (const f of this.floors) {
+      if (x < f.minX || x > f.maxX || z < f.minZ || z > f.maxZ) continue;
+      if (y >= f.top - 0.75 && f.top > g) g = f.top;
+    }
+    for (const r of this.ramps) {
+      const along = (r.axis === 'x' ? x : z) - r.start, lat = (r.axis === 'x' ? z : x) - r.lat;
+      const k = along * r.dir / r.len; // 0 no pé da escada, 1 no topo (a rampa chega ao topo um pouco antes da parede)
+      if (k < 0 || k > 1.25 || Math.abs(lat) > r.halfW) continue;
+      const h = r.base + r.h * Math.min(1, k);
+      if (y >= h - 0.75 && h > g) g = h;
+    }
+    return g;
+  }
+
+  /** Entreposto: torre de vigia de pedra com piso de madeira no alto, parapeito e escada. Dá para subir e lutar de cima. */
+  buildOutpost(team, bx, bz, side) {
+    const O = OUTPOST, S = O.S, red = team === TEAM.RED;
+    const c = this.tp(team, bx, bz);
+    const sx = red ? -side : side; // lado da escada no mundo
+    const base = terrainHeight(c.x, c.z);
+    const top = base + O.H;
+    const rot = red ? Math.PI : 0;
+    const add = (key, lx, lz, { y = base, ry = 0, s = S } = {}) => {
+      const p = this.tp(team, bx + lx, bz + lz);
+      const o = cloneModel(key);
+      o.position.set(p.x, y, p.z); o.rotation.y = ry + rot; o.scale.setScalar(s);
+      this.scene.add(o);
+      return o;
+    };
+    const h = O.half, wc = h - 0.625;
+    // paredes (2 por lado) e pilares nos cantos
+    for (const off of [-2.5, 2.5]) {
+      add('wall', off, -wc); add('wall', off, wc, { ry: Math.PI });
+      add('wall', -wc, off, { ry: Math.PI / 2 }); add('wall', wc, off, { ry: -Math.PI / 2 });
+    }
+    for (const ax of [-1, 1]) for (const az of [-1, 1]) add('pillar', ax * (h - 0.4), az * (h - 0.4));
+    // piso do segundo andar
+    for (const ax of [-2.5, 2.5]) for (const az of [-2.5, 2.5]) add('floor_wood_large', ax, az, { y: top - 0.06 });
+    // parapeito (aberto onde a escada chega)
+    const stairZ = O.stairOff; // a escada fica alinhada com o segmento lateral z = +2,5
+    for (const off of [-2.5, 2.5]) {
+      add('barrier', off, -h + 0.3, { y: top }); add('barrier', off, h - 0.3, { y: top });
+      if (!(off === stairZ)) add('barrier', side * (h - 0.3), off, { y: top, ry: Math.PI / 2 });
+      add('barrier', -side * (h - 0.3), off, { y: top, ry: Math.PI / 2 });
+    }
+    // cobertura e enfeites no alto
+    add('crates_stacked', -side * 2.6, -2.6, { y: top, s: 0.75 });
+    add('keg', side * 2.8, -2.8, { y: top, s: 0.6 });
+    add('bottle_A_green', -side * 3.4, 2.4, { y: top, s: 0.9 });
+    add('bottle_B_green', -side * 2.9, 3.2, { y: top, s: 0.8 });
+    for (const az of [-1, 1]) add('torch_lit', -side * (h - 0.3), az * (h - 0.3), { y: top + 1.1, s: 1.2 });
+    const flag = add(team === TEAM.BLUE ? 'flag_blue' : 'flag_red', -side * (h - 0.6), 0, { y: top, s: 6 });
+    this.animated.push({ type: 'flag', obj: flag, phase: bx + bz });
+    // escada encostada na parede do lado `side`
+    // o modelo da escada tem o pivô numa ponta e se estende 6 unidades no +z local
+    const stair = add('stairs_wood', side * h, stairZ, { ry: side * Math.PI / 2, y: base });
+    stair.userData.isStair = true;
+    // colisão: o bloco é sólido até o piso; o parapeito barra a queda (menos na chegada da escada)
+    const wx = (lx) => (red ? -lx : lx), wz = (lz) => (red ? -lz : lz);
+    const boxW = (x0, z0, x1, z1, hh) => this.col.addBox(Math.min(wx(bx + x0), wx(bx + x1)), Math.min(wz(bz + z0), wz(bz + z1)), Math.max(wx(bx + x0), wx(bx + x1)), Math.max(wz(bz + z0), wz(bz + z1)), hh);
+    boxW(-h, -h, h, h, O.H);
+    const rail = O.H + 1.3, t = 0.25;
+    boxW(-h, -h, h, -h + t, rail); boxW(-h, h - t, h, h, rail);
+    boxW(-side * h, -h, -side * (h - t), h, rail);
+    boxW(side * (h - t), -h, side * h, stairZ - O.stairHalfW, rail);
+    boxW(side * (h - t), stairZ + O.stairHalfW, side * h, h, rail);
+    // superfícies
+    const minX = Math.min(c.x - h, c.x + h), maxX = Math.max(c.x - h, c.x + h);
+    this.floors.push({ minX, maxX, minZ: c.z - h, maxZ: c.z + h, top });
+    const foot = this.tp(team, bx + side * (h + O.stairLen), bz + stairZ);
+    this.ramps.push({ axis: 'x', start: foot.x, dir: -sx, len: O.stairLen - 1, lat: foot.z, halfW: O.stairHalfW, base, h: O.H });
+    this.outposts.push({ team, x: c.x, z: c.z, top, stairFoot: new THREE.Vector3(foot.x, base, foot.z) });
+  }
+
+  /** Canhão de lançamento (modelo montado com primitivas): arremessa o jogador para perto do meio do mapa. */
+  buildCannon(team, bx, bz) {
+    const p = this.tp(team, bx, bz);
+    const y = terrainHeight(p.x, p.z);
+    const g = new THREE.Group();
+    const wood = new THREE.MeshStandardMaterial({ color: 0x7a5232, roughness: 0.9 });
+    const iron = new THREE.MeshStandardMaterial({ color: 0x2a2a2e, roughness: 0.4, metalness: 0.7 });
+    const band = new THREE.MeshStandardMaterial({ color: TEAM_HEX[team], roughness: 0.5, metalness: 0.4 });
+    const carriage = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.7, 3.2), wood); carriage.position.y = 0.9; g.add(carriage);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.25, 16).rotateZ(Math.PI / 2), wood);
+      w.position.set(sx * 1.05, 0.62, sz * 1.0); g.add(w);
+    }
+    const barrel = new THREE.Group();
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.75, 3.6, 18, 1, true), iron); tube.material.side = THREE.DoubleSide;
+    tube.rotation.x = Math.PI / 2; barrel.add(tube);
+    const back = new THREE.Mesh(new THREE.SphereGeometry(0.75, 16, 10), iron); back.position.z = -1.8; barrel.add(back);
+    for (const z of [-1, 0.4, 1.6]) { const r = new THREE.Mesh(new THREE.TorusGeometry(z > 1 ? 0.6 : 0.72, 0.09, 8, 20), band); r.position.z = z; barrel.add(r); }
+    barrel.position.set(0, 1.7, 0.2);
+    barrel.rotation.x = -0.6; // aponta para cima
+    g.add(barrel);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(2.6, 3.0, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: TEAM_HEX[team], transparent: true, opacity: 0.7, depthWrite: false }));
+    ring.position.y = 0.07; g.add(ring);
+    g.position.set(p.x, y, p.z);
+    g.rotation.y = team === TEAM.RED ? Math.PI : 0; // a boca aponta para o meio do mapa
+    g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    this.scene.add(g);
+    this.col.addCircle(p.x, p.z, 1.3, 1.6);
+    const c = { team, pos: new THREE.Vector3(p.x, y, p.z), mesh: g, barrel };
+    this.cannons.push(c);
+    return c;
   }
 
   // ------------------------------------------------------------ meio do mapa
@@ -459,6 +579,7 @@ export class World {
       if (Math.abs(x) < 44 && Math.abs(z) > 136) return false; // castelos
       if (Math.abs(Math.abs(x) - 60) < 8 && Math.abs(z) > 140) return false; // vilarejos
       for (const [cx, cz, r] of [[-62, 35, 14], [62, -35, 14], [20, 27, 12], [-20, -27, 12], [30, 100, 5], [-30, -100, 5], [16, 24, 6], [-16, -24, 6],
+        ...OUTPOST_SPOTS.flatMap(([x, z, sd]) => [[x, z, 9], [-x, -z, 9], [x + sd * 9, z, 6], [-x - sd * 9, -z, 6]]),
         ...TOMB_SPOTS.flatMap(([x, z]) => [[x, z, 4], [-x, -z, 4]]), ...VEIN_SPOTS.flatMap(([x, z]) => [[x, z, 3.5], [-x, -z, 3.5]]), ...COIN_SPOTS.flatMap(([x, z]) => [[x, z, 2], [-x, -z, 2]])]) {
         if (Math.hypot(x - cx, z - cz) < r + margin) return false;
       }
@@ -549,7 +670,7 @@ export class World {
       ['wl0', -46, -160], ['wl1', -48, -130], ['wl2', -48, -100], ['wl3', -48, -70], ['wl4', -48, -35], ['wl5', -48, -10],
       ['el0', 46, -160], ['el1', 48, -130], ['el2', 48, -100], ['el3', 48, -70], ['el4', 48, -35], ['el5', 48, -10],
       ['campE', 58, -35], ['foodW', -30, -100], ['foodE', 30, -100], ['ruin', -12, -22],
-      ['m1', -24, -70], ['m2', 24, -70],
+      ['m1', -24, -70], ['m2', 24, -70], ['cannon', -19, -140],
     ];
     const edges = [
       ['cell', 'door'], ['door', 'throne'], ['door', 'courtR'], ['throne', 'gateOut'], ['throne', 'courtL'], ['throne', 'courtR'],
@@ -558,7 +679,7 @@ export class World {
       ['gateOut', 'c1'], ['c1', 'c2'], ['c2', 'c3'], ['c3', 'c4'], ['c4', 'c5'],
       ['sideOutL', 'wl0'], ['wl0', 'wl1'], ['wl1', 'wl2'], ['wl2', 'wl3'], ['wl3', 'wl4'], ['wl4', 'wl5'],
       ['sideOutR', 'el0'], ['el0', 'el1'], ['el1', 'el2'], ['el2', 'el3'], ['el3', 'el4'], ['el4', 'el5'],
-      ['wl3', 'm1'], ['m1', 'c3'], ['c3', 'm2'], ['m2', 'el3'], ['el4', 'campE'],
+      ['gateOut', 'cannon'], ['wl3', 'm1'], ['m1', 'c3'], ['c3', 'm2'], ['m2', 'el3'], ['el4', 'campE'],
       ['c2', 'foodW'], ['wl2', 'foodW'], ['c2', 'foodE'], ['el2', 'foodE'], ['c4', 'ruin'], ['c5', 'ruin'],
     ];
     const id = (name, red) => (red ? 'R_' : 'B_') + name;
