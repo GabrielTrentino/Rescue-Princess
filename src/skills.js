@@ -7,7 +7,7 @@
 //  - icon: ícone da skill no HUD e nos menus.
 import * as THREE from 'three';
 import { sfx } from './audio.js';
-import { MERCHANT, SUMMONER } from './config.js';
+import { MERCHANT, SUMMONER, SUPPLY } from './config.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const flat = (v) => { const d = v.clone(); d.y = 0; if (d.lengthSq() < 1e-6) d.set(0, 0, 1); return d.normalize(); };
@@ -609,31 +609,40 @@ const PRIEST = [
 ];
 
 // ======================================================================== Mercador
+// Mercador: sem recargas. O limite é a energia (e o ouro do cofre).
 const MERCHANT_SKILLS = [
   {
-    id: 'm_craft', icon: '⚒️', slot: 1, name: 'Fabricar', cost: 'Energia (arma 20, capacete 14, peitoral 18)', dmg: '—', effect: 'Escolhe o tipo (arma de uma classe, capacete ou peitoral) e o atributo. A raridade é sorteada: o nível do mercador e as melhorias da Oficina aumentam as chances. A peça sai com +1.', dur: '3 s canalizados (+50% fora da cidade)', cd: 1,
-    perks: { A: ['Mestre ferreiro', 'Fabrica 30% mais rápido.'], B: ['Economia', 'Fabricar custa 20% menos energia.'] },
+    id: 'm_craft', icon: '⚒️', slot: 1, name: 'Oficina', cost: 'Energia (arma 20, capacete 14, peitoral 18, seringa 20)', dmg: '—',
+    effect: 'Abre a oficina com duas abas. Fabricar: escolhe o tipo (arma de uma classe, capacete, peitoral ou seringa) e o atributo; a raridade é sorteada. Aprimorar: sobe +1 uma peça da mochila ou de um aliado a até 4 m (energia e minério).',
+    dur: '3 s canalizados para fabricar, 2 s para aprimorar (+50% de tempo fora da cidade)', cd: 0,
+    perks: { A: ['Mestre ferreiro', 'Fabrica e aprimora 30% mais rápido.'], B: ['Economia', 'Fabricar custa 20% menos energia.'] },
     menu: 'craft',
   },
   {
-    id: 'm_stall', icon: '🏪', slot: 2, name: 'Banca à distância', cost: '5 de energia', dmg: '—', effect: 'Abre a banca do castelo de qualquer lugar do mapa. Perto da banca, a tecla E é livre.', dur: 'Instantâneo', cd: (p) => (p === 'A' ? 8 : 20),
-    perks: { A: ['Mascate', 'Recarga de 8 s e não custa energia.'], B: ['Vitrine', '+8 espaços de exposição na banca.'] },
+    id: 'm_stall', icon: '🏪', slot: 2, name: 'Banca à distância', cost: '5 de energia', dmg: '—', effect: 'Abre a banca do castelo de qualquer lugar do mapa. Perto da banca, a tecla E é livre.', dur: 'Instantâneo', cd: 0,
+    perks: { A: ['Mascate', 'Abrir a banca à distância não custa energia.'], B: ['Vitrine', '+8 espaços de exposição na banca.'] },
     menu: 'stall',
     energy: (p) => (p === 'A' ? 0 : MERCHANT.remoteStallCost),
   },
   {
-    id: 'm_upgrade', icon: '💎', slot: 3, name: 'Aprimorar', cost: 'Energia 8 × nível novo e minério igual ao nível novo', dmg: '—', effect: 'Sobe +1 o atributo de uma peça da mochila ou da arma de um aliado a até 4 m (máximo +5).', dur: '2 s (canalizado)', cd: 4,
-    perks: { A: ['Ourives', '30% menos energia e 1 minério a menos.'], B: ['Refino', 'Também pode subir a raridade de uma peça (custa energia e 3 minérios).'] },
-    menu: 'upgrade',
+    id: 'm_supply', icon: '⛺', slot: 3, name: 'Posto de suprimentos', cost: `${SUPPLY.energy} de energia`, dmg: '—',
+    effect: `Monta um posto de suprimentos aos seus pés. Aliados a até ${SUPPLY.radius} m recuperam ${SUPPLY.regen} de vida por segundo e ganham +${SUPPLY.armor} de armadura. Um posto por mercador: montar outro desmonta o anterior.`,
+    dur: `${SUPPLY.duration} s`, cd: 0,
+    perks: { A: ['Arsenal', 'Aliados no posto também causam +15% de dano.'], B: ['Posto avançado', 'Dura 50 s e alcança 10 m.'] },
+    energy: () => SUPPLY.energy,
+    cast(S, ch, aim, p) { return S.game.economy.placeSupply(ch, p); },
+    ai: (c) => c.alliesNear >= 2 && (c.inFight || c.allyLow),
   },
   {
-    id: 'm_scrap', icon: '♻️', slot: 4, name: 'Desmanchar', cost: '—', dmg: '—', effect: 'Destrói uma peça da mochila e devolve 50% da energia de fabricação, mais minério (1 + raridade).', dur: 'Instantâneo', cd: 1,
+    id: 'm_scrap', icon: '♻️', slot: 4, name: 'Desmanchar', cost: '—', dmg: '—', effect: 'Destrói uma peça da mochila e devolve 50% da energia de fabricação, mais minério (1 + raridade).', dur: 'Instantâneo', cd: 0,
     perks: { A: ['Reciclagem', 'Devolve 75% da energia e +1 minério.'], B: ['Sucata valiosa', 'Também rende ao cofre 25% do preço base da peça em ouro.'] },
     menu: 'scrap',
   },
   {
-    id: 'm_works', icon: '🏗️', slot: 5, name: 'Obras do castelo', cost: 'Ouro do cofre + energia', dmg: '—', effect: 'Abre o menu de obras e da Oficina. Só funciona dentro da cidade.', dur: 'A obra fica pronta em 20 s', cd: 5,
-    perks: { A: ['Mestre de obras', 'Obras custam 20% menos ouro.'], B: ['Mutirão', 'Obras ficam prontas na hora.'] },
+    id: 'm_works', icon: '🏗️', slot: 5, name: 'Obras e Reino', cost: 'Ouro do cofre (+ energia nas obras)', dmg: '—',
+    effect: 'Abre o menu com três abas. Obras do castelo (só dentro da cidade). Oficina: melhorias individuais do mercador (forjas, sorte, ourives, refino, expositores). Reino: melhorias globais de vida, dano, armadura e velocidade para todo o time.',
+    dur: 'A obra fica pronta em 20 s', cd: 0,
+    perks: { A: ['Mestre de obras', 'Obras e melhorias do Reino custam 20% menos ouro.'], B: ['Mutirão', 'Obras ficam prontas na hora.'] },
     menu: 'works',
   },
 ];

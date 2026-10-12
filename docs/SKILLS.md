@@ -40,6 +40,7 @@ XP total por nível: 100, 250, 450, 700, 1.000, 1.350, 1.750, 2.200 e 2.700 (ní
 | **K** | Skills e perks | Escolher perks e evoluir skills. |
 | **I** | Mochila e equipamento | Arma, capacete, peitoral e itens guardados. |
 | **E** | Interagir | Princesa, banquete, pegar itens e ouro, minerar (Mercador), abrir a banca, vender ao mercador. |
+| **G** | Usar item | Seringa na sua princesa (perto dela ou carregando), bomba numa torre inimiga (Ladino) ou contaminar um banquete (Ladino). Ver seção 6.4. |
 
 **Princesa:** o **Ladino**, o **Mercador** e o **Invocador** não podem pegar nem carregar a princesa. Eles podem atacar quem a carrega e encostar na princesa inimiga caída para devolvê-la.
 
@@ -177,6 +178,8 @@ São 10 classes. Os ataques base (botão esquerdo) das classes originais continu
 | 4 | **Lâmina pesada:** dano 45. | **Nocaute:** atordoa o alvo por 0,8 s. |
 | 5 | **Passo sombrio:** teleporta para as costas do alvo mirado (alcance 12 m). | **Sequestrador:** dano dobrado se o alvo estiver carregando a princesa. |
 
+**Itens exclusivos do Ladino** (seção 6.4): compra **bombas** na banca para destruir torres inimigas e pode usar seringas para **contaminar banquetes**. Só o Ladino vê os banquetes contaminados.
+
 ### 4.6 Alabardeiro (nova)
 
 - **Vida:** 140 · **Velocidade:** 6,5 (proposta)
@@ -253,34 +256,47 @@ Classe de economia. Quase não luta: minera, fabrica armas e armaduras, vende na
 - **Energia:** 0 a 100. Regenera 0,5 por segundo fora da cidade e 1 dentro. +3 por coleta de ouro ou item, +2 por compra de jogador. A venda com desconto devolve energia.
 - **Minério:** recurso para aprimorar. Vem dos **veios de cristal** pelo mapa (E para minerar, 1,5 s, 2 a 4 minérios; o veio volta em 60 s) e de desmanchar peças.
 
-| Slot | Skill | Custo | Efeito | Recarga |
-|---|---|---|---|---|
-| 1 | Fabricar | Energia: arma 20, capacete 14, peitoral 18 | Escolhe o tipo (arma de uma classe, capacete ou peitoral) e o atributo. **A raridade é sorteada** (tabela abaixo). A peça sai com +1. Fica parado 3 s (+50% fora da cidade); dano ou movimento cancela e devolve a energia. | 1 s |
-| 2 | Banca à distância | 5 de energia | Abre a banca do castelo de qualquer lugar. Perto da banca, a tecla E é livre. | 20 s |
-| 3 | Aprimorar | Energia 8 × nível novo e minério igual ao nível novo | Sobe +1 o atributo de uma peça da mochila ou de um aliado a até 4 m (máximo +5). Canalizado, 2 s. | 4 s |
-| 4 | Desmanchar | — | Destrói uma peça e devolve 50% da energia de fabricação e 1 + raridade de minério. | 1 s |
-| 5 | Obras do castelo | Ouro do cofre + energia | Abre as obras e a Oficina. Só dentro da cidade. | 5 s |
+O Mercador **não tem recargas**: o limite é a energia, o minério e o ouro do cofre. No Nível II (pontos depois dos 5 perks), a skill custa 20% menos energia em vez de recarregar mais rápido.
+
+| Slot | Skill | Custo | Efeito |
+|---|---|---|---|
+| 1 | Oficina | Energia: arma 20, capacete 14, peitoral 18, seringa 20 (+2 minérios) | Menu com duas abas. **Fabricar:** escolhe o tipo (arma de uma classe, capacete, peitoral ou seringa) e o atributo; **a raridade é sorteada** (tabela abaixo) e a peça sai com +1. A seringa vai para o estoque da banca. **Aprimorar:** sobe +1 uma peça do próprio equipamento, da mochila ou de um aliado a até 4 m (máximo +5), com energia 8 × nível novo e minério igual ao nível novo. Fica parado 3 s para fabricar e 2 s para aprimorar (+50% fora da cidade); dano ou movimento cancela e devolve o custo. |
+| 2 | Banca à distância | 5 de energia | Abre a banca do castelo de qualquer lugar. Perto da banca, a tecla E é livre. |
+| 3 | Posto de suprimentos (nova) | 30 de energia | Monta um posto aos seus pés por 25 s. Aliados a até 7 m recuperam 5 de vida por segundo e ganham +15 de armadura. Um posto por mercador. |
+| 4 | Desmanchar | — | Destrói uma peça e devolve 50% da energia de fabricação e 1 + raridade de minério. |
+| 5 | Obras e Reino | Ouro do cofre (+ energia nas obras) | Menu com três abas: **Obras do castelo** (só dentro da cidade), **Sua Oficina** (melhorias individuais) e **Reino** (melhorias globais do time). |
 
 | Slot | Perk A | Perk B |
 |---|---|---|
-| 1 | **Mestre ferreiro:** fabrica 30% mais rápido. | **Economia:** fabricar custa 20% menos energia. |
-| 2 | **Mascate:** recarga de 8 s e não custa energia. | **Vitrine:** +8 espaços de exposição na banca. |
-| 3 | **Ourives:** 30% menos energia e 1 minério a menos. | **Refino:** também pode subir a raridade de uma peça (energia e 3 minérios). |
+| 1 | **Mestre ferreiro:** fabrica e aprimora 30% mais rápido. | **Economia:** fabricar custa 20% menos energia. |
+| 2 | **Mascate:** a banca à distância não custa energia. | **Vitrine:** +8 espaços de exposição na banca. |
+| 3 | **Arsenal:** aliados no posto também causam +15% de dano. | **Posto avançado:** o posto dura 50 s e alcança 10 m. |
 | 4 | **Reciclagem:** devolve 75% da energia e +1 minério. | **Sucata valiosa:** também rende ao cofre 25% do preço base em ouro. |
-| 5 | **Mestre de obras:** obras custam 20% menos ouro. | **Mutirão:** obras ficam prontas na hora. |
+| 5 | **Mestre de obras:** obras e melhorias do Reino custam 20% menos ouro. | **Mutirão:** obras ficam prontas na hora. |
 
 **Chance de raridade ao fabricar.** O mercador não escolhe a raridade. No nível 1 ele fabrica de Comum a Rara (cerca de 61%, 29% e 10%). Cada nível aumenta a chance das raridades melhores. Épica e Lendária só saem depois das Forjas da Oficina.
 
-**Oficina** (no menu da skill 5, paga com o ouro do cofre, vale para o time):
+**Sua Oficina** (aba da skill 5, **individual**: cada mercador tem a sua; paga com o ouro do cofre):
 
 | Melhoria | Efeito | Custo |
 |---|---|---|
 | Forja de mestre | Libera a raridade Épica. | 500 |
 | Forja lendária | Libera a raridade Lendária (precisa da Forja de mestre). | 1.000 |
 | Sorte do ferreiro I, II e III | Cada uma aumenta a chance de raridades melhores (equivale a 3 níveis do mercador). | 250, 500 e 800 |
+| Ourives | Aprimorar custa 30% menos energia e 1 minério a menos. | 300 |
+| Refino | A aba Aprimorar também sobe a raridade de uma peça (energia e 3 minérios). Precisa de Ourives. | 600 |
 | Expositores extras | +6 espaços de exposição na banca. | 300 |
 
 Com tudo comprado e nível 10, as chances ficam perto de 4% Comum, 39% Incomum, 39% Rara, 14% Épica e 4,5% Lendária.
+
+**Reino** (aba da skill 5, **global**: vale para todos os jogadores do time, inclusive quem renasce ou troca de classe depois). Pago com o ouro do cofre. Cada melhoria tem 5 níveis e o preço sobe 60% a cada nível: **150, 240, 380, 610 e 980** de ouro (−20% com o perk Mestre de obras).
+
+| Melhoria | Efeito por nível | Máximo (nível 5) |
+|---|---|---|
+| ❤️ Vigor | +6% de vida máxima | +30% |
+| ⚔️ Força | +5% de dano | +25% |
+| 🛡️ Couraça | +6 de armadura | +30 |
+| 👟 Agilidade | +3% de velocidade de movimento | +15% |
 
 ### 4.10 Invocador (nova)
 
@@ -404,7 +420,8 @@ Todos os personagens têm **armadura**, que reduz o dano recebido: **redução =
 
 - Cada castelo tem um cofre de ouro compartilhado pelo time. Começa com **250 de ouro**.
 - **Entra no cofre:** o ouro das peças vendidas na banca e o ouro que o mercador pega no mapa.
-- **Sai do cofre:** a compra de itens dos jogadores (seção 5.6), as obras (seção 6.3) e a Oficina (seção 4.9).
+- **Entra também** o ouro das seringas e bombas compradas na banca.
+- **Sai do cofre:** a compra de itens dos jogadores (seção 5.6), as obras (seção 6.3), a Oficina e o Reino (seção 4.9).
 
 ### 6.2 Banca do mercador
 
@@ -412,29 +429,50 @@ Todos os personagens têm **armadura**, que reduz o dano recebido: **redução =
 - Tem **12 espaços de exposição** (+8 com o perk Vitrine, +6 com os Expositores extras da Oficina) e um **depósito de 30 espaços** para os itens que os jogadores vendem quando o mercador não está.
 - O mercador expõe peças da mochila e escolhe o modo de preço de cada uma: Desconto (70% do preço, ganha energia na venda), Normal (100%) ou Sobrecarga (150%, gasta energia ao expor).
 - Os jogadores do time abrem a banca com E e compram com o próprio ouro. Inimigos não podem usar a banca.
+- Aba **Boticário**: seringas (120 de ouro, enquanto houver estoque) e bombas (150 de ouro, só para o Ladino). Ver seção 6.4.
 - Funciona sem o mercador por perto.
 - Bots: ao renascer, compram a melhor arma, capacete e peitoral que conseguem pagar.
 
 ### 6.3 Obras
 
-O mercador abre o menu de obras com a skill 5 do modo Mercador, dentro da cidade. Só uma obra pode ser construída por vez, e ela fica pronta em 20 s.
+O mercador abre o menu de obras com a skill 5; construir só funciona dentro da cidade. Só uma obra pode ser construída por vez, e ela fica pronta em 20 s.
 
 | Obra | Efeito por nível | Níveis | Custo por nível (ouro do cofre + energia) |
 |---|---|---|---|
 | Quartel | Tempo de renascimento −1 s (de 7 s até 4 s). | 3 | 250 + 20 · 500 + 35 · 900 + 50 |
 | Ossuário | +1 no limite de cada tipo de invocação do Invocador. | 2 | 300 + 25 · 700 + 45 |
 | Estandarte | +10% de XP para todo o time. | 3 | 300 + 20 · 600 + 35 · 1000 + 50 |
-| Torres de defesa | Nível 1: uma torre (15 de dano a cada 1,5 s, alcance 22 m, 300 de vida). Nível 2: duas torres. Nível 3: 25 de dano e 500 de vida. | 3 | 400 + 30 · 700 + 45 · 1100 + 60 |
+| Torres de defesa | Nível 1: uma torre do lado de fora do portão (15 de dano a cada 1,5 s, alcance 24 m, 300 de vida). Nível 2: duas torres. Nível 3: 25 de dano e 500 de vida. | 3 | 400 + 30 · 700 + 45 · 1100 + 60 |
 | Tesouraria | +0,5 de ouro por segundo para cada jogador do time. | 2 | 350 + 25 · 800 + 45 |
 
-- As torres só atiram em inimigos dentro da cidade ou perto das muralhas. Podem ser destruídas, e reconstruir custa metade do preço.
+- As torres ficam **do lado de fora do portão**, cobrindo a estrada de acesso, e atiram em qualquer inimigo à vista no alcance. Podem ser destruídas (por dano ou pela bomba do Ladino), e reconstruir custa metade do preço.
+
+### 6.4 Seringa, banquete contaminado e bomba
+
+**Seringa (💉).** Qualquer classe usa com a tecla **G**: perto da sua princesa (até 4 m) ou enquanto a carrega, ela perde **1 nível de peso**. Cada jogador carrega até 2.
+
+**Banquete contaminado.** O Ladino pode gastar uma seringa num banquete no chão (G a até 4 m). Se um inimigo pegar esse banquete e der à prisioneira (que é a princesa do Ladino), ela **perde** 1 nível de peso em vez de ganhar, e o Ladino ganha o XP do banquete. Só quem joga de Ladino vê a marca verde do banquete contaminado. Se um aliado do Ladino pegar o banquete, ele vale como banquete normal; o Ladino nunca pega um banquete contaminado pelo inimigo.
+
+**Como conseguir seringas:**
+
+| Fonte | Como funciona |
+|---|---|
+| Banca (aba Boticário) | 120 de ouro, enquanto houver estoque. Cada time começa com 1. Sem mercador no time, o estoque sobe sozinho até 2. |
+| Fabricação | O Mercador fabrica na Oficina (20 de energia + 2 minérios); vai para o estoque da banca. |
+| Esqueletos | Esqueletos selvagens têm 15% de chance de deixar uma seringa ao morrer. |
+| Carroça do boticário | Evento: a primeira chega aos 75 s, depois a cada 150 s, alternando entre as ruínas dos dois lados do rio. Tem 2 seringas e fica 60 s. Avisada na tela e no minimapa. |
+
+**Bomba (💣).** Só o Ladino compra (150 de ouro, carrega 1). Com G perto de uma torre inimiga, planta a bomba em 1,5 s (tiros da torre não interrompem; golpes de inimigos, sim). A torre explode sozinha 3 s depois.
 
 ## 7. Decisões da implementação
 
 | Ponto | Decisão |
 |---|---|
 | Botão direito | Bloqueio para todas as classes (Cavaleiro 75% do dano frontal, as outras 50%). Arqueira: mirar. Invocador: Marcha. |
-| Skills e perks | As 5 skills já vêm liberadas. Cada nível dá 1 ponto para um perk; com os 5 perks escolhidos, os pontos evoluem skills para o Nível II (−20% de recarga). |
+| Skills e perks | As 5 skills já vêm liberadas. Cada nível dá 1 ponto para um perk; com os 5 perks escolhidos, os pontos evoluem skills para o Nível II (−20% de recarga; no Mercador, −20% de energia). |
+| Mercador | Sem recargas. Aprimorar virou uma aba da Oficina (skill 1) e a skill 3 virou o Posto de suprimentos. Os perks Ourives e Refino viraram melhorias da Oficina individual. |
+| Oficina e Reino | A Oficina (forjas, sorte, ourives, refino, expositores) é individual de cada mercador. O Reino (vida, dano, armadura, velocidade) vale para o time todo, com preço progressivo. |
+| Tecla G | Usa a seringa ou a bomba, conforme o que estiver perto. |
 | XP | Vale só dentro da partida. |
 | Mercador e Invocador | Viraram duas classes separadas (antes era o Mercador de Almas com dois modos). |
 | Cura | Saiu da Maga e virou a classe Sacerdote. A Maga ganhou a Lança de gelo. |
@@ -448,4 +486,4 @@ O mercador abre o menu de obras com a skill 5 do modo Mercador, dentro da cidade
 | Mochila e ouro | Não caem ao morrer. |
 | Time sem mercador | A banca recebe peças comuns de um vendedor fixo a cada 15 s. |
 | Bots | Com 6 ou mais jogadores por time, um bot de cada time é Mercador (no time azul, só se você não escolher o Mercador). Sacerdotes e Invocadores aparecem entre os bots. |
-| Mapa | Banca à esquerda do pátio. Em cada metade: 8 pontos de moedas, 2 túmulos, 5 veios de minério e 1 baú no acampamento de esqueletos. Torres atrás do portão principal. |
+| Mapa | Banca à esquerda do pátio. Em cada metade: 8 pontos de moedas, 2 túmulos, 5 veios de minério e 1 baú no acampamento de esqueletos. Torres do lado de fora do portão principal. Carroça do boticário nas ruínas centrais. |

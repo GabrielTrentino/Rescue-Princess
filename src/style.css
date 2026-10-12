@@ -261,3 +261,35 @@ button.opt.sel { background: rgba(243,195,74,.25); border-color: var(--gold); }
 .c-rogue { --cc: #3a3a4e; } .c-halberdier { --cc: #6a7a8a; } .c-swordsman { --cc: #a83a4a; } .c-priest { --cc: #c8a83a; }
 .c-merchant { --cc: #b8862a; } .c-summoner { --cc: #4a2a6a; }
 .chances { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; font-size: 13px; background: rgba(255,255,255,.04); border-radius: 6px; padding: 6px; }
+
+/* ---------- códice ---------- */
+.menubtns { display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap; }
+button.codexbtn { font-size: 17px; padding: 11px 26px; background: #3a2a1a; border-color: #b08a4a; }
+#codex { z-index: 30; background: rgba(10, 7, 4, 0.97); }
+#codex .panel { background: #1c140c; }
+#codex .panel { text-align: left; max-width: 1080px; }
+#codex h2 { text-align: center; }
+#codex h3 { margin: 12px 0 6px; font-size: 18px; }
+.cx-body { font-size: 13.5px; line-height: 1.5; color: #e4d6bb; }
+.cx-body p { margin: 4px 0 8px; }
+.cx-body ul { margin: 4px 0 8px; padding-left: 18px; }
+.cx-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+.cx-classnav { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 10px; position: sticky; top: -26px; background: #1c140c; padding: 6px 0; z-index: 1; }
+.cx-classnav a { color: #f3e2bd; text-decoration: none; border: 1px solid #6a5030; border-radius: 6px; padding: 3px 8px; font-size: 12.5px; }
+.cx-classnav a:hover { border-color: var(--gold); }
+.cx-class { border: 1px solid rgba(255,255,255,.12); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; background: rgba(255,255,255,.03); scroll-margin-top: 50px; }
+.cx-chead { display: flex; gap: 10px; align-items: center; }
+.cx-chead b { font-family: var(--display); color: var(--gold); font-size: 20px; }
+.cx-ic { font-size: 30px; }
+.cx-stats { font-size: 12.5px; color: #cdbd9d; margin: 4px 0; }
+.cx-skills { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
+.cx-sk { background: rgba(0,0,0,.18); border-radius: 6px; padding: 6px 8px; }
+.cx-skh { display: flex; align-items: center; gap: 6px; }
+.cx-skh small { color: #bba985; }
+.cx-ske { font-size: 12.5px; margin: 4px 0; }
+.cx-perks { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 12px; color: #cdbd9d; }
+.cx-perks b { color: #f3e2bd; }
+.cx-hidden { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cx-h { background: rgba(255,255,255,.04); border-left: 3px solid var(--gold); border-radius: 4px; padding: 6px 10px; display: flex; flex-direction: column; gap: 2px; }
+.cx-h b { color: var(--gold); }
+@media (max-width: 760px) { .cx-cols, .cx-skills, .cx-hidden, .cx-perks { grid-template-columns: 1fr; } }

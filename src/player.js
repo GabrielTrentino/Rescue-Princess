@@ -225,6 +225,7 @@ export class PlayerController {
         }
       }
       if (!menuOpen && this.pressed.KeyE) this.interact();
+      if (!menuOpen && this.pressed.KeyG) this.useItem();
       if (!menuOpen && this.pressed.KeyB) g.openClassMenu(true);
       if (!menuOpen && this.pressed.KeyK) g.menus.open('skills');
       if (!menuOpen && this.pressed.KeyI) g.menus.open('bag');
@@ -269,7 +270,6 @@ export class PlayerController {
     } else if (r === 'nosouls') g.hud.status('Almas insuficientes');
     else if (r === 'noenergy') g.hud.status('Energia insuficiente');
     else if (r && r.menu) {
-      if (r.menu === 'works' && !g.world.castles[ch.team].inside(ch.pos.x, ch.pos.z)) { g.hud.status('Obras e Oficina só dentro da cidade'); return; }
       if (r.menu === 'revive' && !g.characters.some(o => !o.alive && o.team === ch.team && !o.isMonster && o !== ch)) { g.hud.status('Nenhum aliado morto'); return; }
       if (r.menu === 'stall') {
         if (!g.economy.nearStall(ch)) g.combat.commitSkill(ch, r.skill); // à distância: paga energia e recarga
@@ -278,6 +278,16 @@ export class PlayerController {
     } else if (r === false && sk && (ch.cd[sk.id] || 0) > 0) {
       g.hud.status(`${sk.name}: ${Math.ceil(ch.cd[sk.id])} s`);
     }
+  }
+
+  /** Tecla G: seringa na princesa, bomba na torre inimiga ou (Ladino) contaminar um banquete. */
+  useItem() {
+    const g = this.game, ch = this.ch;
+    const r = g.economy.useItem(ch);
+    if (r) return;
+    if (!ch.syringes && !ch.bombs) g.hud.status('Sem seringa nem bomba. Compre na banca (aba Boticário).');
+    else if (ch.bombs && ch.classKey === 'rogue') g.hud.status('Chegue perto de uma torre inimiga para plantar a bomba');
+    else g.hud.status(ch.classKey === 'rogue' ? 'Seringa: perto da sua princesa ou de um banquete' : 'Seringa: chegue perto da sua princesa (ou use enquanto a carrega)');
   }
 
   interact() {

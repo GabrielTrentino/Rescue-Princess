@@ -1,7 +1,7 @@
 // Personagens: jogador, bots, monstros e invocações. Modelo animado, atributos, status, movimento e estado.
 import * as THREE from 'three';
 import { Assets, cloneModel, uniqueMaterials, steelify } from './assets.js';
-import { CLASSES, MONSTERS, TEAM, TEAM_HEX, TEAM_TINT, TEAM_GLOW, CHAR_RADIUS, MAX_FAT, RARITY, ATTRS, ARMOR, armorReduction } from './config.js';
+import { CLASSES, MONSTERS, TEAM, TEAM_HEX, TEAM_TINT, TEAM_GLOW, CHAR_RADIUS, MAX_FAT, RARITY, ATTRS, ARMOR, armorReduction, freshForge } from './config.js';
 import { heightAt, inWater, BOUNDS } from './world.js';
 
 const markerGeo = new THREE.OctahedronGeometry(0.34, 0);
@@ -106,6 +106,9 @@ export class Character {
     // Mercador e Invocador
     this.mode = 'merchant';
     this.energy = 30; this.ore = 2; this.souls = 0;
+    this.forge = freshForge(); // Oficina individual do mercador
+    this.syringes = 0; this.bombs = 0; this.foodPoison = null;
+    this.supplyArmor = 0; this.supplyDmg = 0;
     this.modeCd = 0;
     if (monsterType) {
       this.monster = MONSTERS[monsterType];
@@ -153,7 +156,12 @@ export class Character {
     if (this.isMonster || !this.cls) return this.summon ? 5 : 0;
     const h = this.helmet ? ARMOR.helmet.rarity[this.helmet.rarity] : ARMOR.helmet.basic;
     const c = this.body ? ARMOR.body.rarity[this.body.rarity] : ARMOR.body.basic;
-    return this.cls.armor + h + c + this.attrValue('armor');
+    return this.cls.armor + h + c + this.attrValue('armor') + this.teamBoost('armor') + (this.supplyArmor || 0);
+  }
+  /** Melhoria global do Reino comprada pelo time (vida, dano, armadura, velocidade). */
+  teamBoost(key) {
+    const E = this.game && this.game.economy;
+    return E && this.cls && !this.isMonster ? E.boostValue(this.team, key) : 0;
   }
   helmetArmor() { return this.isMonster ? 0 : (this.helmet ? ARMOR.helmet.rarity[this.helmet.rarity] : ARMOR.helmet.basic); }
   damageReduction() { return armorReduction(this.armorValue()); }
@@ -161,7 +169,7 @@ export class Character {
   recalcStats() {
     if (this.isMonster) return;
     const ratio = this.maxHp > 1 ? this.hp / this.maxHp : 1;
-    this.maxHp = this.cls.hp + this.attrValue('hp');
+    this.maxHp = Math.round((this.cls.hp + this.attrValue('hp')) * (1 + this.teamBoost('hp')));
     if (this.alive) this.hp = Math.max(1, Math.min(this.maxHp, Math.round(this.maxHp * ratio)));
   }
   /** Equipa uma peça no espaço certo (arma, capacete ou peitoral). Retorna a peça que saiu. */
@@ -396,7 +404,7 @@ export class Character {
     if (t < st.furyUntil) s *= 1.1;
     if (t < st.marchUntil) s *= 1.4;
     if (st.veil && st.veilPerk === 'A' && this.isInvisible()) s *= 1.2;
-    s *= 1 + this.attrValue('move');
+    s *= 1 + this.attrValue('move') + this.teamBoost('speed');
     if (inWater(this.pos.x, this.pos.z)) s *= 0.6;
     return s;
   }

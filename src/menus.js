@@ -3,13 +3,13 @@
 // fabricar, aprimorar, desmanchar, obras e Oficina (Mercador) e ressurreição (Sacerdote).
 import {
   CLASSES, CLASS_KEYS, RARITY, ATTRS, ATTR_KEYS, PRICE_MODES, LEVEL_MULT, WORKS, WORK_KEYS, STALL, WORK_TIME,
-  ARMOR, FORGE, FORGE_KEYS, MERCHANT, armorReduction,
+  ARMOR, FORGE, FORGE_KEYS, MERCHANT, armorReduction, BOOSTS, BOOST_KEYS, BOOST_MAX, ITEMS,
 } from './config.js';
 import { SKILLS, SKILL_BY_ID, cdOf, soulCost } from './skills.js';
-import { perkOf, slotState, canChoosePerk, canEvolve, choosePerk, evolve, pointsFree, rankOf, xpToNext, allPerksChosen } from './progression.js';
+import { perkOf, slotState, canChoosePerk, canEvolve, choosePerk, evolve, pointsFree, rankOf, xpToNext, allPerksChosen, energyMultiplier } from './progression.js';
 import {
   weaponHtml, weaponLabel, sellValue, stallPrice, basePrice, craftEnergy, craftTime, upgradeCost, refineCost,
-  workCost, scrapReturn, itemKind, canEquip,
+  workCost, scrapReturn, itemKind, canEquip, upgradeTime, boostPrice,
 } from './economy.js';
 import { sfx } from './audio.js';
 
@@ -50,11 +50,14 @@ export class Menus {
   open(view, opts = {}) {
     const g = this.game;
     if (!g.running || g.over || (!this.ch.alive && view !== 'skills')) return;
+    this.msg = '';
+    if (view === 'upgrade') { view = 'craft'; this.state.ctab = 'upgrade'; }
+    else if (view === 'craft') this.state.ctab = opts.tab || this.state.ctab || 'make';
+    if (view === 'craft' && !this.state.craft) this.state.craft = { kind: 'weapon', cls: 'knight', attr: 'hp' };
+    if (view === 'works') this.state.wtab = this.state.wtab || 'works';
+    if (view === 'stall') this.state.tab = this.ch.isMerchant ? 'expose' : 'buy';
     this.view = view;
     this.opts = opts;
-    this.msg = '';
-    if (view === 'craft' && !this.state.craft) this.state.craft = { kind: 'weapon', cls: 'knight', attr: 'hp' };
-    if (view === 'stall') this.state.tab = this.ch.isMerchant ? 'expose' : 'buy';
     this.isOpen = true;
     this.root.classList.remove('hidden');
     g.pc.clearInput();
@@ -93,6 +96,10 @@ export class Menus {
     const g = this.game, ch = this.ch, E = g.economy;
     if (a === 'close') { this.close(); return; }
     if (a === 'tab') { this.state.tab = d.tab; this.msg = ''; }
+    else if (a === 'ctab') { this.state.ctab = d.tab; this.msg = ''; }
+    else if (a === 'wtab') { this.state.wtab = d.tab; this.msg = ''; }
+    else if (a === 'buyItem') this.result(E.buyItem(ch, d.k), `Comprado: ${ITEMS[d.k].icon} ${ITEMS[d.k].name}`);
+    else if (a === 'boost') this.result(E.buyBoost(ch, d.k), 'Melhoria do Reino comprada!');
     else if (a === 'perk') {
       const sk = SKILL_BY_ID[d.skill];
       if (choosePerk(ch, sk, d.perk)) { this.flash(`${sk.name}: perk ${sk.perks[d.perk][0]}`, true); sfx('levelup'); }
@@ -147,7 +154,6 @@ export class Menus {
     else if (v === 'stall') html = this.viewStall();
     else if (v === 'sell') html = this.viewSell();
     else if (v === 'craft') html = this.viewCraft();
-    else if (v === 'upgrade') html = this.viewUpgrade();
     else if (v === 'scrap') html = this.viewScrap();
     else if (v === 'works') html = this.viewWorks();
     else if (v === 'revive') html = this.viewRevive();
@@ -163,7 +169,7 @@ export class Menus {
     const canPick = canChoosePerk(ch, sk);
     const cd = cdOf(sk, chosen);
     const souls = soulCost(sk, chosen);
-    const meta = [`Dano: ${sk.dmg}`, `Duração: ${sk.dur}`, `Recarga: ${cd} s`];
+    const meta = [`Dano: ${sk.dmg}`, `Duração: ${sk.dur}`, cd ? `Recarga: ${cd} s` : 'Sem recarga'];
     if (sk.cost) meta.push(`Custo: ${sk.cost}`);
     else if (souls) meta.push(`Custo: ${souls} alma${souls > 1 ? 's' : ''}`);
     const perkBtn = (p) => {
@@ -175,7 +181,7 @@ export class Menus {
     let state = '';
     if (!chosen) state = canPick ? '<span class="tag go">Escolha um perk (1 ponto)</span>' : '<span class="tag">Perk no próximo nível</span>';
     else if (rankOf(ch, sk.slot) >= 2) state = '<span class="tag ok">Nível II</span>';
-    const evo = canEvolve(ch, sk.slot) ? `<button class="evo" data-act="evolve" data-slot="${sk.slot}">⬆ Evoluir para o Nível II: −20% de recarga (1 ponto)</button>` : '';
+    const evo = canEvolve(ch, sk.slot) ? `<button class="evo" data-act="evolve" data-slot="${sk.slot}">⬆ Evoluir para o Nível II: ${cd ? '−20% de recarga' : '−20% de energia'} (1 ponto)</button>` : '';
     return `<div class="skc ${chosen ? 'on' : ''}">
       <div class="skh">${skillIcon(sk, ch.classKey)}<span class="slot">${sk.slot}</span><b>${esc(sk.name)}</b>${state}</div>
       <div class="skm">${meta.map(esc).join(' · ')}</div>
@@ -191,7 +197,7 @@ export class Menus {
     let html = this.header(`${CLASSES[ch.classKey].icon} Skills e perks · ${CLASSES[ch.classKey].name}`,
       `Nível ${ch.level}${xp ? ` · ${xp.have}/${xp.need} XP para o próximo` : ' (máximo)'} · <b>${free}</b> ponto${free === 1 ? '' : 's'} livre${free === 1 ? '' : 's'}. ` +
       `As 5 skills já estão liberadas (teclas 1 a 5). Cada nível dá 1 ponto para escolher o perk de uma skill (um dos dois, até o fim da partida). ` +
-      (allPerksChosen(ch) ? 'Com todos os perks escolhidos, os pontos evoluem skills para o Nível II (−20% de recarga).' : ''));
+      (allPerksChosen(ch) ? `Com todos os perks escolhidos, os pontos evoluem skills para o Nível II (${ch.isMerchant ? '−20% de energia' : '−20% de recarga'}).` : ''));
     html += '<div class="skgrid">' + SKILLS[ch.classKey].map(s => this.skillCard(s)).join('') + '</div>';
     return html;
   }
@@ -220,7 +226,7 @@ export class Menus {
   viewStall() {
     const g = this.game, ch = this.ch, E = g.economy, s = E.stalls[ch.team];
     const vault = Math.floor(E.vault[ch.team]);
-    const tabs = ch.isMerchant ? [['expose', 'Expor'], ['withdraw', 'Retirar'], ['depot', `Depósito (${s.depot.length})`], ['buy', 'Comprar']] : [['buy', 'Comprar'], ['sell', 'Vender']];
+    const tabs = ch.isMerchant ? [['expose', 'Expor'], ['withdraw', 'Retirar'], ['depot', `Depósito (${s.depot.length})`], ['buy', 'Comprar'], ['shop', '💉 Boticário']] : [['buy', 'Comprar'], ['sell', 'Vender'], ['shop', '💉 Boticário']];
     const tab = this.state.tab || tabs[0][0];
     let html = this.header('🏪 Banca do Mercador', `Seu ouro: <b>🪙 ${Math.floor(ch.gold)}</b> · Cofre do castelo: <b>🪙 ${vault}</b> · Exposição: ${s.slots.length}/${E.stallSlotsMax(ch.team)}` + (ch.isMerchant ? ` · Energia: <b>⚡ ${Math.floor(ch.energy)}</b>` : ''));
     html += '<div class="tabs">' + tabs.map(([k, n]) => `<button class="${tab === k ? 'sel' : ''}" data-act="tab" data-tab="${k}">${n}</button>`).join('') + '</div>';
@@ -232,6 +238,13 @@ export class Menus {
         const mine = canEquip(ch, sl.item) ? '' : ' <span class="tag">outra classe</span>';
         html += this.itemRow(sl.item, `${tag}${mine}<button data-act="buy" data-i="${i}" ${can ? '' : 'disabled'}>Comprar 🪙 ${sl.price}</button>`);
       });
+    } else if (tab === 'shop') {
+      const stock = E.syringeStock[ch.team];
+      html += `<p class="hint">Seringa: com <b>G</b>, tira 1 nível de peso da sua princesa (perto dela ou enquanto a carrega). O Ladino também pode contaminar um banquete: se o inimigo levar à prisioneira, ela emagrece em vez de engordar. Também caem de esqueletos e aparecem na carroça do boticário, nas ruínas centrais.</p>`;
+      const sy = ITEMS.syringe, bo = ITEMS.bomb;
+      html += `<div class="irow"><div class="iname"><span class="wpn">${sy.icon} ${sy.name}</span><small>Estoque: ${stock} · Você tem ${ch.syringes}/${sy.max}${ch.isMerchant ? ' · Fabrique mais na Oficina (skill 1)' : ''}</small></div><div class="ibtn"><button data-act="buyItem" data-k="syringe" ${stock > 0 && ch.gold >= sy.price && ch.syringes < sy.max ? '' : 'disabled'}>Comprar 🪙 ${sy.price}</button></div></div>`;
+      const rogue = ch.classKey === 'rogue';
+      html += `<div class="irow"><div class="iname"><span class="wpn">${bo.icon} ${bo.name}</span><small>Só o Ladino. Com <b>G</b> perto de uma torre inimiga, planta em ${String(bo.plantTime).replace(".", ",")} s e a torre explode ${bo.fuse} s depois.${rogue ? ` Você tem ${ch.bombs}/${bo.max}.` : ''}</small></div><div class="ibtn"><button data-act="buyItem" data-k="bomb" ${rogue && ch.gold >= bo.price && ch.bombs < bo.max ? '' : 'disabled'}>${rogue ? `Comprar 🪙 ${bo.price}` : 'Só Ladino'}</button></div></div>`;
     } else if (tab === 'sell') {
       html += `<p class="hint">Venda por 50% do preço base. O ouro sai do cofre do castelo e o item vai para o depósito da banca.</p>`;
       if (!ch.backpack.length) html += '<p class="empty">Mochila vazia.</p>';
@@ -283,32 +296,45 @@ export class Menus {
     const g = this.game, ch = this.ch, E = g.economy, s = this.state.craft;
     const perk = perkOf(ch, SKILL_BY_ID.m_craft);
     const inside = E.inCity(ch);
-    const cost = craftEnergy(s.kind, perk);
+    const tab = this.state.ctab || 'make';
+    let html = this.header('⚒️ Oficina', `Energia: <b>⚡ ${Math.floor(ch.energy)}</b> · Minério: <b>⛏️ ${ch.ore}</b> · Mochila ${ch.backpack.length}/${ch.backpackSize}${inside ? '' : ' · <b>Fora da cidade: +50% de tempo</b>'}`);
+    html += '<div class="tabs">' + [['make', '🔨 Fabricar'], ['upgrade', '💎 Aprimorar']].map(([k, n]) => `<button class="${tab === k ? 'sel' : ''}" data-act="ctab" data-tab="${k}">${n}</button>`).join('') + '</div>';
+    if (tab === 'upgrade') return html + this.upgradeBody();
+    const mul = energyMultiplier(ch, 1);
+    const cost = craftEnergy(s.kind, perk, mul);
+    const ore = s.kind === 'syringe' ? ITEMS.syringe.craftOre : 0;
     const time = craftTime(perk, inside);
-    let html = this.header('🔨 Fabricar', `Energia: <b>⚡ ${Math.floor(ch.energy)}</b> · Minério: <b>⛏️ ${ch.ore}</b> · Mochila ${ch.backpack.length}/${ch.backpackSize}${inside ? '' : ' · <b>Fora da cidade: +50% de tempo</b>'}`);
     const opt = (k, v, label) => `<button class="opt ${String(s[k]) === String(v) ? 'sel' : ''}" data-act="craftSet" data-k="${k}" data-v="${v}">${label}</button>`;
-    html += '<h3>Tipo</h3><div class="opts2">' + opt('kind', 'weapon', '⚔️ Arma') + opt('kind', 'helmet', `${ARMOR.helmet.icon} Capacete`) + opt('kind', 'body', `${ARMOR.body.icon} Peitoral`) + '</div>';
-    if (s.kind === 'weapon') html += '<h3>Arma de qual classe</h3><div class="opts2">' + CLASS_KEYS.map(k => opt('cls', k, `${CLASSES[k].icon} ${CLASSES[k].name}`)).join('') + '</div>';
-    html += '<h3>Atributo secundário</h3><div class="opts2">' + ATTR_KEYS.map(k => opt('attr', k, ATTRS[k].name)).join('') + '</div>';
-    html += `<h3>Chance de raridade</h3>${this.chancesHtml(ch)}<p class="hint">A raridade é sorteada. Cada nível do mercador e as melhorias de Sorte da Oficina aumentam as chances; as Forjas da Oficina liberam Épica e Lendária. A peça sai com +1; suba o nível com Aprimorar (energia e minério).</p>`;
-    const ok = ch.energy >= cost && !ch.channel && (ch.cd.m_craft || 0) <= 0;
-    html += `<div class="summary"><div>Custo: <b>⚡ ${cost}</b> · Tempo: <b>${time.toFixed(1)} s</b></div>
+    html += '<h3>Tipo</h3><div class="opts2">' + opt('kind', 'weapon', '⚔️ Arma') + opt('kind', 'helmet', `${ARMOR.helmet.icon} Capacete`) + opt('kind', 'body', `${ARMOR.body.icon} Peitoral`) + opt('kind', 'syringe', `${ITEMS.syringe.icon} Seringa`) + '</div>';
+    if (s.kind === 'syringe') {
+      html += `<p class="hint">A seringa vai para o estoque da banca (aba Boticário, estoque atual: ${E.syringeStock[ch.team]}) e é vendida por ${ITEMS.syringe.price} de ouro para o cofre. Custa também ${ore} minérios.</p>`;
+    } else {
+      if (s.kind === 'weapon') html += '<h3>Arma de qual classe</h3><div class="opts2">' + CLASS_KEYS.map(k => opt('cls', k, `${CLASSES[k].icon} ${CLASSES[k].name}`)).join('') + '</div>';
+      html += '<h3>Atributo secundário</h3><div class="opts2">' + ATTR_KEYS.map(k => opt('attr', k, ATTRS[k].name)).join('') + '</div>';
+      html += `<h3>Chance de raridade</h3>${this.chancesHtml(ch)}<p class="hint">A raridade é sorteada. Cada nível do mercador e as melhorias de Sorte da sua Oficina (skill 5) aumentam as chances; as Forjas liberam Épica e Lendária. A peça sai com +1; suba o nível na aba Aprimorar.</p>`;
+    }
+    const ok = ch.energy >= cost && ch.ore >= ore && !ch.channel;
+    html += `<div class="summary"><div>Custo: <b>⚡ ${cost}</b>${ore ? ` + <b>⛏️ ${ore}</b>` : ''} · Tempo: <b>${time.toFixed(1)} s</b> · Sem recarga</div>
       <button class="primary" data-act="craft" ${ok ? '' : 'disabled'}>Fabricar</button></div>
-      <p class="hint">Você fica parado fabricando. Se levar dano ou andar, cancela e a energia volta.</p>`;
+      <p class="hint">Você fica parado fabricando. Se levar dano ou andar, cancela e o custo volta.</p>`;
     return html;
   }
 
-  viewUpgrade() {
+  upgradeBody() {
     const g = this.game, ch = this.ch, E = g.economy;
-    const perk = perkOf(ch, SKILL_BY_ID.m_upgrade);
-    const cap = E.rarityCap(ch.team);
-    let html = this.header('💎 Aprimorar', `Energia: <b>⚡ ${Math.floor(ch.energy)}</b> · Minério: <b>⛏️ ${ch.ore}</b>. Sobe +1 o atributo (máximo +5). Minere nos veios de cristal com E.${perk === 'B' ? ' Refino: também sobe a raridade.' : ''}`);
+    const jew = ch.forge.jeweler, ref = ch.forge.refine, mul = energyMultiplier(ch, 1);
+    const cap = E.rarityCap(ch);
+    let html = `<p class="hint">Sobe +1 o atributo (máximo +5) em ${upgradeTime(perkOf(ch, SKILL_BY_ID.m_craft), E.inCity(ch)).toFixed(1)} s. Custa energia e minério (minere nos veios de cristal com E).${jew ? ' Ourives: −30% de energia e −1 minério.' : ''}${ref ? ' Refino: também sobe a raridade.' : ' Compre Ourives e Refino na sua Oficina (skill 5).'}</p>`;
     const row = (it, data) => {
       let b = '';
-      if (it.lvl < 5) { const c = upgradeCost(it.lvl + 1, perk); b += `<button data-act="upgrade" ${data} ${ch.energy >= c.energy && ch.ore >= c.ore ? '' : 'disabled'}>+${it.lvl + 1} (⚡${c.energy} ⛏️${c.ore})</button>`; }
-      if (perk === 'B' && it.rarity < RARITY.length - 1) { const c = refineCost(it.rarity + 1, perk); b += `<button data-act="refine" ${data} ${ch.energy >= c.energy && ch.ore >= c.ore && it.rarity + 1 <= cap ? '' : 'disabled'}>→ ${RARITY[it.rarity + 1].name} (⚡${c.energy} ⛏️${c.ore})</button>`; }
+      if (it.lvl < 5) { const c = upgradeCost(it.lvl + 1, jew, mul); b += `<button data-act="upgrade" ${data} ${ch.energy >= c.energy && ch.ore >= c.ore && !ch.channel ? '' : 'disabled'}>+${it.lvl + 1} (⚡${c.energy} ⛏️${c.ore})</button>`; }
+      if (ref && it.rarity < RARITY.length - 1) { const c = refineCost(it.rarity + 1, jew, mul); b += `<button data-act="refine" ${data} ${ch.energy >= c.energy && ch.ore >= c.ore && it.rarity + 1 <= cap && !ch.channel ? '' : 'disabled'}>→ ${RARITY[it.rarity + 1].name} (⚡${c.energy} ⛏️${c.ore})</button>`; }
       return this.itemRow(it, b || '<span class="tag">Máximo</span>');
     };
+    html += '<h3>Seu equipamento</h3>';
+    let any = false;
+    for (const k of ['weapon', 'helmet', 'body']) if (ch[k]) { any = true; html += row(ch[k], `data-ally="${ch.id}" data-slot="${k}"`); }
+    if (!any) html += '<p class="empty">Você usa só peças básicas.</p>';
     html += '<h3>Mochila</h3>';
     if (!ch.backpack.length) html += '<p class="empty">Mochila vazia.</p>';
     ch.backpack.forEach((it, i) => html += row(it, `data-i="${i}"`));
@@ -337,29 +363,44 @@ export class Menus {
   viewWorks() {
     const g = this.game, ch = this.ch, E = g.economy;
     const perk = perkOf(ch, SKILL_BY_ID.m_works);
-    const b = E.building[ch.team];
     const vault = Math.floor(E.vault[ch.team]);
-    let html = this.header('🏗️ Obras e Oficina', `Cofre: <b>🪙 ${vault}</b> · Energia: <b>⚡ ${Math.floor(ch.energy)}</b> · Uma obra por vez, pronta em ${perk === 'B' ? '0' : WORK_TIME} s.`);
-    html += '<div class="cols2"><div><h3>Obras do castelo</h3>';
-    if (b) html += `<p class="hint">Em construção: <b>${WORKS[b.key].name}</b> (${Math.max(0, Math.ceil(b.doneAt - g.time))} s)</p>`;
-    for (const k of WORK_KEYS) {
-      const w = WORKS[k], lvl = E.works[ch.team][k], max = w.costs.length;
-      const cost = workCost(k, lvl, perk);
-      const can = cost && !b && E.vault[ch.team] >= cost.gold && ch.energy >= cost.energy;
-      html += `<div class="irow"><div class="iname"><b>${w.name}</b> <span class="tag">${lvl}/${max}</span><small>${esc(w.desc)}</small></div><div class="ibtn">${cost ? `<button data-act="work" data-k="${k}" ${can ? '' : 'disabled'}>Construir 🪙${cost.gold} + ⚡${cost.energy}</button>` : '<span class="tag ok">Completo</span>'}</div></div>`;
+    const tab = this.state.wtab || 'works';
+    let html = this.header('🏗️ Obras e Reino', `Cofre do castelo: <b>🪙 ${vault}</b> · Energia: <b>⚡ ${Math.floor(ch.energy)}</b>`);
+    html += '<div class="tabs">' + [['works', '🏰 Obras do castelo'], ['forge', '⚒️ Sua Oficina'], ['realm', '👑 Reino (time)']].map(([k, n]) => `<button class="${tab === k ? 'sel' : ''}" data-act="wtab" data-tab="${k}">${n}</button>`).join('') + '</div>';
+    if (tab === 'works') {
+      const b = E.building[ch.team];
+      const inside = E.inCity(ch);
+      html += `<p class="hint">Uma obra por vez, pronta em ${perk === 'B' ? '0' : WORK_TIME} s. ${inside ? '' : '<b>Só dá para construir dentro da cidade.</b>'}</p>`;
+      if (b) html += `<p class="hint">Em construção: <b>${WORKS[b.key].name}</b> (${Math.max(0, Math.ceil(b.doneAt - g.time))} s)</p>`;
+      for (const k of WORK_KEYS) {
+        const w = WORKS[k], lvl = E.works[ch.team][k], max = w.costs.length;
+        const cost = workCost(k, lvl, perk);
+        if (cost) cost.energy = Math.round(cost.energy * energyMultiplier(ch, 5));
+        const can = cost && !b && inside && E.vault[ch.team] >= cost.gold && ch.energy >= cost.energy;
+        html += `<div class="irow"><div class="iname"><b>${w.name}</b> <span class="tag">${lvl}/${max}</span><small>${esc(w.desc)}</small></div><div class="ibtn">${cost ? `<button data-act="work" data-k="${k}" ${can ? '' : 'disabled'}>Construir 🪙${cost.gold} + ⚡${cost.energy}</button>` : '<span class="tag ok">Completo</span>'}</div></div>`;
+      }
+      const dead = E.towers[ch.team].filter(t => !t.alive).length;
+      if (dead) html += `<button data-act="rebuild" ${inside ? '' : 'disabled'}>Reconstruir ${dead} torre${dead > 1 ? 's' : ''} (metade do preço)</button>`;
+    } else if (tab === 'forge') {
+      html += `<p class="hint">Melhorias <b>individuais</b>: valem só para você (cada mercador tem a sua Oficina). Pagas com o ouro do cofre.</p>${this.chancesHtml(ch)}`;
+      const f = ch.forge;
+      for (const k of FORGE_KEYS) {
+        const def = FORGE[k];
+        const reqOk = !def.req || f[def.req];
+        const btn = f[k] ? '<span class="tag ok">Comprada</span>' : `<button data-act="forge" data-k="${k}" ${reqOk && E.vault[ch.team] >= def.cost ? '' : 'disabled'}>Comprar 🪙${def.cost}</button>`;
+        html += `<div class="irow"><div class="iname"><b>${def.name}</b><small>${esc(def.desc)}${def.req && !reqOk ? ` (precisa de ${FORGE[def.req].name})` : ''}</small></div><div class="ibtn">${btn}</div></div>`;
+      }
+    } else {
+      html += `<p class="hint">Melhorias <b>globais</b>: valem para todos os jogadores do seu time, inclusive quem ainda vai renascer. Cada nível fica mais caro.${perk === 'A' ? ' Mestre de obras: −20% no preço.' : ''}</p>`;
+      const bs = E.boosts[ch.team];
+      for (const k of BOOST_KEYS) {
+        const def = BOOSTS[k], lvl = bs[k];
+        const price = boostPrice(lvl, perk);
+        const now = lvl ? def.fmt(lvl * def.per) : 'nenhum bônus';
+        const btn = price === null ? '<span class="tag ok">Máximo</span>' : `<button data-act="boost" data-k="${k}" ${E.vault[ch.team] >= price ? '' : 'disabled'}>Nível ${lvl + 1} 🪙${price}</button>`;
+        html += `<div class="irow"><div class="iname"><b>${def.icon} ${def.name}</b> <span class="tag">${lvl}/${BOOST_MAX}</span><small>${esc(def.desc)} por nível · Agora: ${now}</small></div><div class="ibtn">${btn}</div></div>`;
+      }
     }
-    const dead = E.towers[ch.team].filter(t => !t.alive).length;
-    if (dead) html += `<button data-act="rebuild">Reconstruir ${dead} torre${dead > 1 ? 's' : ''} (metade do preço)</button>`;
-    html += '</div><div><h3>Oficina (melhorias do mercador)</h3>';
-    html += `<p class="hint">Pagas com o ouro do cofre. Valem para o time todo.</p>${this.chancesHtml(ch)}`;
-    const f = E.forge[ch.team];
-    for (const k of FORGE_KEYS) {
-      const def = FORGE[k];
-      const reqOk = !def.req || f[def.req];
-      const btn = f[k] ? '<span class="tag ok">Comprada</span>' : `<button data-act="forge" data-k="${k}" ${reqOk && E.vault[ch.team] >= def.cost ? '' : 'disabled'}>Comprar 🪙${def.cost}</button>`;
-      html += `<div class="irow"><div class="iname"><b>${def.name}</b><small>${esc(def.desc)}${def.req && !reqOk ? ` (precisa de ${FORGE[def.req].name})` : ''}</small></div><div class="ibtn">${btn}</div></div>`;
-    }
-    html += '</div></div>';
     return html;
   }
 

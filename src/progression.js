@@ -28,6 +28,8 @@ export function perkOf(ch, skill) {
   return s && s.perk ? s.perk : null;
 }
 export function rankOf(ch, slot) { const s = slotState(ch, slot); return s && s.rank >= 2 ? 2 : 1; }
+/** Skills sem recarga (Mercador): o Nível II reduz 20% da energia em vez da recarga. */
+export function energyMultiplier(ch, slot) { return rankOf(ch, slot) >= 2 ? 1 - RANK2_CDR : 1; }
 export function cdMultiplier(ch, slot) {
   let k = 1 - ch.attrValue('cdr');
   if (rankOf(ch, slot) >= 2) k *= 1 - RANK2_CDR;

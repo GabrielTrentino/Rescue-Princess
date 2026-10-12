@@ -1,11 +1,11 @@
 // Inteligência dos bots (aliados e inimigos), dos bots Mercador, Invocador e Sacerdote, dos esqueletos e das invocações.
 import * as THREE from 'three';
-import { DIFFICULTY, SETTINGS, MAX_FAT, ATTR_KEYS, FORGE, FORGE_KEYS, SUMMONER } from './config.js';
+import { DIFFICULTY, SETTINGS, MAX_FAT, ATTR_KEYS, FORGE, FORGE_KEYS, SUMMONER, BOOST_KEYS, ITEMS } from './config.js';
 import { hostile } from './combat.js';
 import { skillList, SKILL_BY_ID } from './skills.js';
 import { perkOf } from './progression.js';
 import { canCarry } from './objectives.js';
-import { craftEnergy, workCost, upgradeCost, itemKind, isUpgrade } from './economy.js';
+import { craftEnergy, workCost, upgradeCost, itemKind, isUpgrade, boostPrice } from './economy.js';
 
 function angleDiff(a, b) { let d = a - b; return Math.atan2(Math.sin(d), Math.cos(d)); }
 function dist2d(a, b) { return Math.hypot(a.x - b.x, a.z - b.z); }
@@ -170,6 +170,24 @@ export class BotAI {
       if (captive.state === 'captive' && captive.fat < MAX_FAT) { this.mode = 'feed'; return T.copy(captive.pos); }
     }
     if (this.role === 'merchant') return this.merchantGoal(T);
+    // Ladino com bomba: vai explodir uma torre inimiga
+    if (ch.classKey === 'rogue' && ch.bombs > 0) {
+      let tw = null, bd = 1e9;
+      for (const o of g.structures) { if (!o.alive || o.team === ch.team || o.bomb) continue; const d = dist2d(o.pos, ch.pos); if (d < bd) { bd = d; tw = o; } }
+      if (tw) { this.mode = 'bomb'; return T.copy(tw.pos); }
+    }
+    // Ladino com seringa: contamina um banquete
+    if (ch.classKey === 'rogue' && ch.syringes > 0) {
+      if (!this.poisonFood || !this.poisonFood.active || this.poisonFood.poison != null) {
+        this.poisonFood = null;
+        let bd = 110;
+        for (const f of O.activeFoods()) { if (f.poison != null) continue; const d = dist2d(f.pos, ch.pos); if (d < bd) { bd = d; this.poisonFood = f; } }
+      }
+      if (this.poisonFood) { this.mode = 'poison'; return T.copy(this.poisonFood.pos); }
+    }
+    // carroça do boticário por perto
+    const ap = g.economy.apothecary;
+    if (ap.active && ch.syringes < 1 && (carrier || ch.classKey === 'rogue') && dist2d(ap.pos, ch.pos) < 70) { this.mode = 'forage'; return T.copy(ap.pos); }
     if (this.role === 'support') {
       // sacerdote: acompanha o aliado mais importante (quem carrega a princesa, ou o atacante mais próximo)
       let best = null, bd = 1e9;
@@ -274,6 +292,12 @@ export class BotAI {
       if (this.roam && this.roam.active && dist2d(this.roam.pos, ch.pos) < 2.8 && !ch.channel) g.economy.mine(ch, this.roam);
     }
     if (ch.classKey === 'priest') this.priestRevive();
+    // seringa e bomba (tecla G)
+    if ((ch.syringes || ch.bombs) && g.time > (this._itemAt || 0) && !ch.channel) {
+      this._itemAt = g.time + (ch.classKey === 'rogue' ? 0.15 : 0.5);
+      const a = g.economy.itemAction(ch);
+      if (a) g.economy.useItem(ch);
+    }
 
     const own = g.objectives.princessOf(ch.team);
     if (!ch.carrying && canCarry(ch) && (own.state === 'captive' || own.state === 'dropped') && dist2d(own.pos, ch.pos) < 2.4) {
@@ -290,6 +314,8 @@ export class BotAI {
       const ranged = RANGED.has(ch.classKey);
       const engage = (this.mode === 'attack' || this.mode === 'forage' || this.mode === 'feed' || this.mode === 'grab') ? (ranged ? 22 : 13) : (ranged ? 30 : 22);
       if (d < engage * this.diff.botAggro || this.mode === 'chase' || t.carrying) fight = true;
+      // Ladino em missão (bomba ou veneno): evita brigas, só reage a quem está colado nele
+      if ((this.mode === 'bomb' || this.mode === 'poison') && d > 3.5 && !t.carrying) fight = false;
     }
 
     let wish = null;
@@ -511,32 +537,39 @@ export class BotAI {
     const team = g.characters.filter(o => o.team === ch.team && o.cls && !o.isMerchant);
     const wanted = (it) => team.some(o => isUpgrade(o, it));
     // itens parados há muito tempo, ou que ninguém do time quer: retira e desmancha
-    const scrap = SKILL_BY_ID.m_scrap;
     for (let i = stall.slots.length - 1; i >= 0; i--) {
       const sl = stall.slots[i];
       if (t - (sl.at || 0) < 150 && wanted(sl.item)) continue;
       if (ch.backpack.length >= ch.backpackSize) break;
       E.withdraw(ch, i);
-      if ((ch.cd[scrap.id] || 0) <= 0) E.scrap(ch, ch.backpack.length - 1);
+      E.scrap(ch, ch.backpack.length - 1);
       break;
     }
-    // Oficina: forjas e sorte, se sobrar ouro no cofre
-    const f = E.forge[ch.team];
-    for (const k of ['luck1', 'master', 'shelf', 'luck2', 'legend', 'luck3']) {
+    const vault = E.vault[ch.team];
+    // Reino (melhorias globais do time) e Oficina individual, alternando, se sobrar ouro no cofre
+    const wperk = perkOf(ch, SKILL_BY_ID.m_works);
+    const bs = E.boosts[ch.team];
+    let bk = null, bp = Infinity;
+    for (const k of BOOST_KEYS) { const p = boostPrice(bs[k], wperk); if (p !== null && p < bp) { bp = p; bk = k; } }
+    const f = ch.forge;
+    let fk = null;
+    for (const k of ['luck1', 'master', 'jeweler', 'shelf', 'luck2', 'refine', 'legend', 'luck3']) {
       const def = FORGE[k];
       if (f[k] || (def.req && !f[def.req])) continue;
-      if (E.vault[ch.team] >= def.cost + 400) { E.buyForge(ch, k); return; }
-      break;
+      fk = k; break;
     }
+    const preferBoost = (this._buyFlip = !this._buyFlip);
+    if (bk && preferBoost && vault >= bp + 350) { E.buyBoost(ch, bk); return; }
+    if (fk && vault >= FORGE[fk].cost + 400) { E.buyForge(ch, fk); return; }
+    if (bk && vault >= bp + 350) { E.buyBoost(ch, bk); return; }
     // obras
-    const works = SKILL_BY_ID.m_works;
-    if ((ch.cd[works.id] || 0) <= 0 && !E.building[ch.team]) {
-      if (E.towers[ch.team].some(tw => !tw.alive) && E.vault[ch.team] > 400) { E.rebuildTowers(ch); return; }
+    if (!E.building[ch.team]) {
+      if (E.towers[ch.team].some(tw => !tw.alive) && vault > 400) { E.rebuildTowers(ch); return; }
       const order = ['towers', 'barracks', 'treasury', 'banner', 'ossuary', 'towers', 'barracks', 'banner', 'treasury', 'towers', 'barracks', 'banner', 'ossuary'];
       for (const key of order) {
-        const cost = workCost(key, E.works[ch.team][key], perkOf(ch, works));
+        const cost = workCost(key, E.works[ch.team][key], wperk);
         if (!cost) continue;
-        if (E.vault[ch.team] >= cost.gold + 60 && ch.energy >= cost.energy + 5) { E.startWork(ch, key); return; }
+        if (vault >= cost.gold + 60 && ch.energy >= cost.energy + 5) { E.startWork(ch, key); return; }
         break;
       }
     }
@@ -544,23 +577,24 @@ export class BotAI {
     const max = E.stallSlotsMax(ch.team);
     for (let i = ch.backpack.length - 1; i >= 0; i--) {
       const it = ch.backpack[i];
-      if (!wanted(it)) { if ((ch.cd[scrap.id] || 0) <= 0) { E.scrap(ch, i); } continue; }
+      if (!wanted(it)) { E.scrap(ch, i); continue; }
       if (stall.slots.length >= max) continue;
       const mode = ch.energy < 45 ? 'discount' : ch.energy > 80 ? 'overcharge' : 'normal';
       if (E.expose(ch, i, mode) !== true) E.expose(ch, i, 'discount');
     }
-    // aprimora peças boas com minério
-    const up = SKILL_BY_ID.m_upgrade;
-    if ((ch.cd[up.id] || 0) <= 0 && ch.energy > 50) {
+    // aprimora peças boas com minério (aba Aprimorar da Oficina)
+    if (ch.energy > 50) {
       const i = ch.backpack.findIndex(it => it.lvl < 3 && it.rarity >= 1);
       if (i >= 0) {
-        const c = upgradeCost(ch.backpack[i].lvl + 1, perkOf(ch, up));
+        const c = upgradeCost(ch.backpack[i].lvl + 1, ch.forge.jeweler);
         if (ch.energy >= c.energy + 20 && ch.ore >= c.ore) { E.upgrade(ch, { bag: i }); return; }
       }
     }
+    const craft = SKILL_BY_ID.m_craft, cperk = perkOf(ch, craft);
+    // seringas: mantém o estoque da banca
+    if (E.syringeStock[ch.team] < 2 && ch.ore >= ITEMS.syringe.craftOre + 1 && ch.energy >= craftEnergy('syringe', cperk) + 15) { E.craft(ch, { kind: 'syringe' }); return; }
     // fabrica para quem do time está pior equipado (arma, peitoral ou capacete)
-    const craft = SKILL_BY_ID.m_craft;
-    if ((ch.cd[craft.id] || 0) <= 0 && ch.backpack.length < ch.backpackSize && stall.slots.length < max) {
+    if (ch.backpack.length < ch.backpackSize && stall.slots.length < max) {
       const onSale = new Set(stall.slots.map(sl => itemKind(sl.item) + ':' + (sl.item.cls || '')));
       const needs = [];
       for (const o of team) {
@@ -570,7 +604,7 @@ export class BotAI {
       }
       if (!needs.length) return;
       const n = needs[Math.floor(Math.random() * needs.length)];
-      if (craftEnergy(n.kind, perkOf(ch, craft)) <= ch.energy - 10) E.craft(ch, { kind: n.kind, cls: n.cls, attr: ATTR_KEYS[Math.floor(Math.random() * ATTR_KEYS.length)] });
+      if (craftEnergy(n.kind, cperk) <= ch.energy - 10) E.craft(ch, { kind: n.kind, cls: n.cls, attr: ATTR_KEYS[Math.floor(Math.random() * ATTR_KEYS.length)] });
     }
   }
 }

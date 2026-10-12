@@ -208,7 +208,16 @@ export class Objectives {
     const glow = new THREE.Mesh(new THREE.RingGeometry(0.7, 0.95, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffd25a, transparent: true, opacity: 0.8, depthWrite: false }));
     glow.position.copy(pos); glow.position.y += 0.18;
     this.game.scene.add(glow);
-    return { pos: pos.clone(), mesh: m, glow, active: true, respawnAt: 0, spawner, phase: Math.random() * 6 };
+    // marca de contaminação: só aparece para quem joga de Ladino
+    const mark = new THREE.Group();
+    const green = new THREE.MeshBasicMaterial({ color: 0x6aff3a, transparent: true, opacity: 0.85, depthWrite: false });
+    mark.add(new THREE.Mesh(new THREE.RingGeometry(1.0, 1.25, 24).rotateX(-Math.PI / 2), green));
+    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), green);
+    skull.position.y = 1.5; mark.add(skull);
+    mark.position.copy(pos); mark.position.y += 0.2;
+    mark.visible = false;
+    this.game.scene.add(mark);
+    return { pos: pos.clone(), mesh: m, glow, mark, active: true, respawnAt: 0, spawner, phase: Math.random() * 6, poison: null, poisoner: null };
   }
 
   /** Princesa que pertence ao time t. */
@@ -222,7 +231,15 @@ export class Objectives {
     const p = ch.pos.clone(); p.y = heightAt(p.x, p.z);
     const f = this.makeFood(p, false);
     f.expire = this.game.time + 30;
+    f.poison = ch.foodPoison; f.poisoner = ch.foodPoisoner || null;
+    ch.foodPoison = null; ch.foodPoisoner = null;
     this.foods.push(f);
+  }
+  removeFood(f) {
+    const g = this.game;
+    g.scene.remove(f.mesh); g.scene.remove(f.glow); g.scene.remove(f.mark);
+    const i = this.foods.indexOf(f);
+    if (i >= 0) this.foods.splice(i, 1);
   }
 
   /** Interação do jogador/bot (tecla E). Retorna texto do que fez ou null. */
@@ -243,8 +260,22 @@ export class Objectives {
 
   feedCaptive(ch) {
     const captive = this.captiveOf(ch.team);
+    // banquete contaminado por um Ladino inimigo: a prisioneira (princesa do Ladino) perde 1 nível de peso
+    if (ch.foodPoison !== null && ch.foodPoison !== undefined && ch.foodPoison !== ch.team) {
+      const by = ch.foodPoisoner;
+      ch.food = false; ch.foodPoison = null; ch.foodPoisoner = null;
+      captive.fat = Math.max(0, captive.fat - 1);
+      captive.playOnce('Use_Item');
+      sfx('poison', this.game.combat.dist(ch));
+      if (by && by.cls) addXp(by, XP.feed, 'banquete contaminado');
+      const who = ch.isPlayer ? 'Você' : ch.name;
+      this.game.feed(`<span class="${ch.team === 0 ? 'b' : 'r'}">${who}</span> deu um banquete <span class="g">contaminado</span>: a ${captive.name} emagreceu (peso ${captive.fat}/${MAX_FAT})`);
+      if (ch.isPlayer) this.game.announce('O banquete estava contaminado!', `A prisioneira ficou mais leve (${captive.fat}/${MAX_FAT})`);
+      else if (by && by.isPlayer) this.game.announce('Seu banquete contaminado funcionou!', `A sua princesa ficou mais leve (${captive.fat}/${MAX_FAT})`);
+      return true;
+    }
     if (!captive.feed()) return false;
-    ch.food = false;
+    ch.food = false; ch.foodPoison = null; ch.foodPoisoner = null;
     ch.feeds++;
     addXp(ch, XP.feed, 'banquete');
     sfx('eat', this.game.combat.dist(ch));
@@ -272,24 +303,31 @@ export class Objectives {
   update(dt) {
     const g = this.game;
     for (const p of this.princesses) p.update(dt);
+    const seePoison = g.player && g.player.classKey === 'rogue';
     // comida
     for (let i = this.foods.length - 1; i >= 0; i--) {
       const f = this.foods[i];
       if (!f.active) {
-        if (f.spawner && g.time >= f.respawnAt) { f.active = true; f.mesh.visible = f.glow.visible = true; }
+        f.mark.visible = false;
+        if (f.spawner && g.time >= f.respawnAt) { f.active = true; f.mesh.visible = f.glow.visible = true; f.poison = null; f.poisoner = null; }
         continue;
       }
-      if (f.expire && g.time > f.expire) { g.scene.remove(f.mesh); g.scene.remove(f.glow); this.foods.splice(i, 1); continue; }
+      if (f.expire && g.time > f.expire) { this.removeFood(f); continue; }
+      f.mark.visible = f.poison !== null && f.poison !== undefined && seePoison;
+      if (f.mark.visible) f.mark.rotation.y += dt * 2;
       f.mesh.rotation.y += dt;
       f.mesh.position.y = f.pos.y + 0.35 + Math.sin(g.time * 2 + f.phase) * 0.12;
       for (const o of g.characters) {
         if (!o.alive || o.isMonster || o.food || o.carrying) continue;
+        // o Ladino reconhece o banquete contaminado pelo inimigo e não o pega
+        if (o.classKey === 'rogue' && f.poison !== null && f.poison !== undefined && f.poison !== o.team) continue;
         if (Math.hypot(o.pos.x - f.pos.x, o.pos.z - f.pos.z) < 1.6) {
           o.food = true;
+          o.foodPoison = f.poison; o.foodPoisoner = f.poisoner;
           sfx('pickup', g.combat.dist(o));
           if (o.isPlayer) g.announce('Você pegou um banquete!', 'Leve-o à prisioneira na masmorra do seu castelo');
           if (f.spawner) { f.active = false; f.respawnAt = g.time + 50; f.mesh.visible = f.glow.visible = false; }
-          else { g.scene.remove(f.mesh); g.scene.remove(f.glow); this.foods.splice(i, 1); }
+          else this.removeFood(f);
           break;
         }
       }

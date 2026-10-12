@@ -29,6 +29,7 @@ O jogo não depende de `npm install` nem de internet: o Three.js (r169) já est�
 | K | Escolher perks |
 | I | Mochila e equipamento |
 | E | Princesa, banquete, pegar armas e ouro, minerar (Mercador), abrir a banca, vender ao mercador |
+| G | Usar seringa na sua princesa, bomba numa torre inimiga (Ladino) ou contaminar um banquete (Ladino) |
 | B | Trocar de classe (dentro do seu castelo) |
 | Tab | Placar detalhado |
 | Esc | Pausar ou fechar menus |
@@ -47,7 +48,7 @@ Cada classe tem um ataque base, o botão direito e **5 skills** (teclas 1 a 5), 
 | 🔱 Alabardeiro | 140 | 40 | Estocada · Varredura · Muralha · Investida com haste · Gancho |
 | ⚔️ Espadachim | 115 | 25 | Contra-ataque · Combo rápido · Corte giratório · Salto · Lâmina sangrenta |
 | ✨ Sacerdote | 110 | 25 | Cura · Luz sagrada · Bênção · Purificar · Ressurreição |
-| 💰 Mercador | 110 | 20 | Fabricar · Banca à distância · Aprimorar · Desmanchar · Obras do castelo (e Oficina) |
+| 💰 Mercador | 110 | 20 | Oficina (fabricar e aprimorar) · Banca à distância · Posto de suprimentos · Desmanchar · Obras e Reino |
 | 💀 Invocador | 100 | 10 | Invocar lacaio · Invocar guerreiro · Invocar arqueiro · Invocar mago · Colheita de almas |
 
 O Ladino, o Mercador e o Invocador não podem carregar a princesa.
@@ -55,15 +56,21 @@ O Ladino, o Mercador e o Invocador não podem carregar a princesa.
 ## Progressão
 
 - Você ganha **XP** abatendo inimigos e esqueletos, com assistências, alimentando a prisioneira, devolvendo a princesa inimiga e resgatando a sua. O Sacerdote ganha curando e ressuscitando; o Mercador ganha fabricando, vendendo, comprando, minerando e construindo.
-- Do nível 1 ao 10. Cada nível dá **1 ponto**: escolha o perk de uma skill (tecla **K**). Com os 5 perks escolhidos, os pontos evoluem skills para o **Nível II** (−20% de recarga).
+- Do nível 1 ao 10. Cada nível dá **1 ponto**: escolha o perk de uma skill (tecla **K**). Com os 5 perks escolhidos, os pontos evoluem skills para o **Nível II** (−20% de recarga; no Mercador, que não tem recargas, −20% de energia).
 
 ## Economia e equipamento
 
 - **Ouro:** renda passiva, moedas e baús pelo mapa, abates e resgates. Use para comprar peças na **banca do mercador**, no pátio do seu castelo.
 - **Equipamento:** arma (da sua classe), capacete e peitoral (qualquer classe). Cada peça tem **raridade** (Comum a Lendária) e um **atributo** de +1 a +5. A **armadura** (da classe + capacete + peitoral) reduz o dano recebido. Ao morrer, só a arma cai, com um nível a menos.
-- **Mercador:** minera minério nos veios de cristal, fabrica peças com energia (a raridade é sorteada; o nível dele e a Oficina melhoram as chances), aprimora com energia e minério, vende na banca e constrói **obras** com o ouro do cofre: Quartel, Ossuário, Estandarte, Torres de defesa e Tesouraria.
+- **Mercador:** não tem recargas. Minera minério nos veios de cristal; na **Oficina** (skill 1) fabrica peças e seringas (a raridade é sorteada) e, na aba Aprimorar, sobe o nível das peças com energia e minério. Monta **postos de suprimentos** que curam e protegem aliados. Com o ouro do cofre, compra melhorias **individuais** (Sua Oficina: forjas, sorte, ourives, refino, expositores), melhorias **globais** do time (Reino: vida, dano, armadura e velocidade, com preço que sobe a cada nível) e **obras**: Quartel, Ossuário, Estandarte, Torres de defesa e Tesouraria.
+- **Torres de defesa:** ficam do lado de fora do portão. O **Ladino** compra **bombas** na banca e, com `G` perto de uma torre inimiga, planta uma que a destrói sozinha.
+- **Seringa:** com `G` perto da sua princesa (ou carregando-a), ela perde 1 nível de peso. Vem da banca (aba Boticário), da fabricação do Mercador, de esqueletos e da **carroça do boticário**, um evento que aparece nas ruínas centrais. O Ladino pode usá-la para **contaminar um banquete**: se o inimigo o der à prisioneira, ela emagrece. Só Ladinos veem banquetes contaminados.
 - **Invocador:** toda morte deixa **almas** no chão por 30 s, e só o Invocador as coleta. Com elas ele invoca lacaios, guerreiros, arqueiros e magos esqueletos, que avançam sozinhos contra o inimigo.
 - Se o time não tiver mercador, um vendedor fixo coloca peças comuns na banca.
+
+## Códice
+
+O botão **📖 Códice** no menu inicial abre um guia com as regras, todas as classes (skills e perks), a economia, os itens e eventos e as mecânicas escondidas. Os números vêm direto do código, então o guia acompanha as mudanças de equilíbrio.
 
 ## Times
 
@@ -98,12 +105,13 @@ src/ai.js           bots (atacante, defensor, coletor, sacerdote, mercador, invo
 src/combat.js       ataque base, bloqueio, skills, projéteis, status e dano
 src/skills.js       as 5 skills e os perks de cada classe
 src/progression.js  XP, níveis, pontos, perks e Nível II
-src/economy.js      ouro, armas e armaduras, mochila, banca, cofre, Oficina, minério, obras, torres, moedas, baús e almas
-src/menus.js        menus de perks, mochila, banca, fabricação, aprimorar, obras, Oficina e ressurreição
-src/objectives.js   princesas e banquetes
+src/economy.js      ouro, armas e armaduras, mochila, banca, cofre, Oficina, Reino, minério, obras, torres, bombas, seringas, posto de suprimentos, carroça do boticário, moedas, baús e almas
+src/menus.js        menus de perks, mochila, banca (com o Boticário), Oficina (fabricar e aprimorar), obras, Oficina individual, Reino e ressurreição
+src/codex.js        Códice do menu inicial: regras, classes, economia, itens e mecânicas escondidas
+src/objectives.js   princesas, banquetes e banquetes contaminados
 src/hud.js          placar, minimapa, marcadores e mensagens
 src/collision.js    colisão 2D com altura e linha de visão
-src/config.js       classes, monstros, dificuldade, XP e economia
+src/config.js       classes, monstros, dificuldade, XP, economia, Reino, seringa e bomba
 docs/SKILLS.md      design das skills, perks, progressão e economia
 public/assets/      modelos KayKit usados pelo jogo
 preview.html        visualizador do mapa (desenvolvimento): preview.html?cam=x,y,z,alvoX,alvoY,alvoZ

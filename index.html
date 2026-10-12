@@ -104,7 +104,10 @@
           </select>
         </label>
       </div>
-      <button id="btnPlay" class="primary" disabled>Carregando...</button>
+      <div class="menubtns">
+        <button id="btnPlay" class="primary" disabled>Carregando...</button>
+        <button id="btnCodex" class="codexbtn">📖 Códice</button>
+      </div>
       <div id="loadbar"><div id="loadFill"></div></div>
       <details class="help">
         <summary>Controles e regras</summary>
@@ -114,6 +117,7 @@
             <li><b>Botão esquerdo</b> ataque base · <b>Botão direito</b> bloquear (Arqueira: mirar; Invocador: Marcha)</li>
             <li><b>1</b> a <b>5</b> skills da classe · <b>K</b> escolher perks</li>
             <li><b>E</b> princesa, banquete, pegar itens e ouro, minerar, banca do mercador</li>
+            <li><b>G</b> usar seringa (na sua princesa) ou bomba (Ladino, em torres inimigas)</li>
             <li><b>I</b> mochila e equipamento · <b>B</b> trocar de classe (no castelo) · <b>Tab</b> placar · <b>Esc</b> pausar</li>
           </ul>
           <ul>
@@ -121,6 +125,7 @@
             <li>As 5 skills já vêm liberadas. Cada nível dá um ponto para escolher um dos 2 perks de uma skill.</li>
             <li>Arma, capacete e peitoral têm raridade e atributo. A armadura reduz o dano. Ao morrer, a arma cai no chão.</li>
             <li>Azul é o seu time, vermelho é o inimigo: anel no chão, marcador e nome na cor do time. A mira fica vermelha sobre inimigos.</li>
+            <li>Regras completas, classes e mecânicas escondidas estão no <b>Códice</b>.</li>
           </ul>
         </div>
       </details>
@@ -135,6 +140,10 @@
       <div class="classes" id="respawnClasses"></div>
       <button id="btnClassOk" class="primary">Confirmar</button>
     </div>
+  </div>
+
+  <div id="codex" class="overlay hidden">
+    <div class="panel wide" id="codexBody"></div>
   </div>
 
   <div id="modal" class="overlay hidden">

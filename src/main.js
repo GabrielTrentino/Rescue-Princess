@@ -4,6 +4,7 @@ import { loadAll } from './assets.js';
 import { Game } from './game.js';
 import { CLASSES, CLASS_KEYS } from './config.js';
 import { initAudio } from './audio.js';
+import { initCodex } from './codex.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('game');
@@ -102,6 +103,7 @@ addEventListener('keydown', (e) => {
 });
 
 renderClasses($('menuClasses'), selectedClass, (k) => { selectedClass = k; });
+initCodex();
 
 function lock() {
   if (params.has('nolock')) { game.locked = true; return; }

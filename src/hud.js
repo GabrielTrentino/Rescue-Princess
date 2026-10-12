@@ -241,7 +241,8 @@ export class HUD {
     this.el.points.classList.toggle('show', pend);
     const piece = (it, empty) => it ? `<span style="color:${RARITY[it.rarity].css}">${weaponLabel(it)}</span>` : empty;
     const armor = ch.armorValue();
-    this.el.weapon.innerHTML = `${piece(ch.weapon, 'Arma básica')} · ${piece(ch.helmet, '⛑️ básico')} · ${piece(ch.body, '🦺 básico')}<br>🛡️ Armadura ${armor} (−${Math.round(armorReduction(armor) * 100)}% de dano) · [I] mochila ${ch.backpack.length}/${ch.backpackSize}`;
+    this.el.weapon.innerHTML = `${piece(ch.weapon, 'Arma básica')} · ${piece(ch.helmet, '⛑️ básico')} · ${piece(ch.body, '🦺 básico')}<br>🛡️ Armadura ${armor} (−${Math.round(armorReduction(armor) * 100)}% de dano) · [I] mochila ${ch.backpack.length}/${ch.backpackSize}` +
+      (ch.syringes || ch.bombs ? `<br><b>[G]</b> ${ch.syringes ? `💉 ${ch.syringes}` : ''}${ch.syringes && ch.bombs ? ' · ' : ''}${ch.bombs ? `💣 ${ch.bombs}` : ''}` : '');
 
     // Mercador e Invocador
     this.el.merchant.classList.toggle('hidden', !ch.isMerchant && !ch.isSummoner);
@@ -268,7 +269,7 @@ export class HUD {
     if (chn) {
       const k = Math.min(1, (g.time - chn.start) / chn.dur);
       this.el.chFill.style.width = (k * 100) + '%';
-      this.el.chText.textContent = ({ craft: 'Fabricando', upgrade: 'Aprimorando', mine: 'Minerando' }[chn.kind] || '') + ` · ${Math.max(0, chn.until - g.time).toFixed(1)} s (andar cancela)`;
+      this.el.chText.textContent = ({ craft: 'Fabricando', upgrade: 'Aprimorando', mine: 'Minerando', bomb: 'Plantando a bomba' }[chn.kind] || '') + ` · ${Math.max(0, chn.until - g.time).toFixed(1)} s (andar cancela)`;
     }
     this.el.buffs.innerHTML = ch.alive ? this.buffList(ch) : '';
     // mira: vermelha sobre inimigo, azul sobre aliado
@@ -297,7 +298,8 @@ export class HUD {
     else if (ch.food) carry = '🍗 Banquete na mão — leve à prisioneira no seu castelo';
     this.el.carry.textContent = carry;
 
-    let prompt = O.promptFor(ch) || E.promptFor(ch);
+    const op = O.promptFor(ch), ia = op ? E.itemAction(ch) : null;
+    let prompt = op ? (ia ? `${op} &nbsp;·&nbsp; ${ia.label}` : op) : E.promptFor(ch);
     if (!prompt && g.world.castles[ch.team].inside(ch.pos.x, ch.pos.z) && ch.alive) prompt = '<b>[B]</b> Trocar de classe';
     this.el.prompt.innerHTML = prompt;
     if (g.time > this.bigUntil) this.el.big.classList.remove('show');
@@ -326,6 +328,16 @@ export class HUD {
       if (!o.alive || o.team === ch.team || !(g.time < o.st.markedUntil) || o.st.markedTeam !== ch.team) continue;
       const p = o.pos.clone(); p.y += 2.9;
       this.setMarker('mark' + o.id, p, '🎯', '', 'red', cam, w, h, false);
+    }
+    // carroça do boticário
+    const ap = E.apothecary;
+    if (ap.active) this.setMarker('apoth', new THREE.Vector3(ap.pos.x, ap.pos.y + 4, ap.pos.z), '💉', 'Boticário · ' + dist(ap.pos), 'gold', cam, w, h);
+    // Ladino com bomba: torres inimigas
+    if (ch.bombs > 0 && ch.classKey === 'rogue') {
+      for (const tw of g.structures) {
+        if (!tw.alive || tw.team === ch.team) continue;
+        this.setMarker('tw' + tw.pos.x.toFixed(0), new THREE.Vector3(tw.pos.x, tw.pos.y + 8, tw.pos.z), '💣', 'Torre · ' + dist(tw.pos), 'red', cam, w, h);
+      }
     }
     // banca quando perto do castelo
     const sp = E.stalls[ch.team].pos;
@@ -398,10 +410,11 @@ export class HUD {
     const pl = g.player;
     const dot = (x, z, color, r = 2.6) => { const [px, py] = this.mmXY(x, z); ctx.fillStyle = color; ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill(); };
     const sq = (x, z, color, s = 3) => { const [px, py] = this.mmXY(x, z); ctx.fillStyle = color; ctx.fillRect(px - s, py - s, s * 2, s * 2); };
-    for (const f of g.objectives.activeFoods()) dot(f.pos.x, f.pos.z, '#ffd25a', 2.2);
+    for (const f of g.objectives.activeFoods()) dot(f.pos.x, f.pos.z, pl.classKey === 'rogue' && f.poison !== null && f.poison !== undefined ? '#6aff3a' : '#ffd25a', 2.2);
+    if (E.apothecary.active) sq(E.apothecary.pos.x, E.apothecary.pos.z, '#5aff8a', 3);
     for (const c of E.coins) if (c.active) dot(c.pos.x, c.pos.z, '#ffe27a', 1.4);
     for (const c of E.chests) if (c.active) sq(c.pos.x, c.pos.z, '#ffcf3a', 2.4);
-    for (const it of E.ground) if (it.pos.distanceTo(pl.pos) < 60) dot(it.pos.x, it.pos.z, it.kind === 'gold' ? '#ffe27a' : RARITY[it.item.rarity].css, 1.8);
+    for (const it of E.ground) if (it.pos.distanceTo(pl.pos) < 60) dot(it.pos.x, it.pos.z, it.kind === 'gold' ? '#ffe27a' : it.kind === 'syringe' ? '#5aff8a' : RARITY[it.item.rarity].css, 1.8);
     if (pl.isSummoner) {
       for (const tb of E.tombs) sq(tb.pos.x, tb.pos.z, g.time >= tb.readyAt ? '#b48aff' : '#6a5a8a', 2);
       for (const s of E.souls) dot(s.pos.x, s.pos.z, '#d8c0ff', 1.6 + s.value * 0.4);

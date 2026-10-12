@@ -209,7 +209,7 @@ export const MERCHANT = {
   regenOut: 0.5, regenIn: 1.0,
   pickupEnergy: 3,
   buyEnergy: 2,
-  craftEnergy: { weapon: 20, helmet: 14, body: 18 },
+  craftEnergy: { weapon: 20, helmet: 14, body: 18, syringe: 20 },
   craftTime: 3, outsideTimeMult: 1.5,
   remoteStallCost: 5,
   mineTime: 1.5, oreMin: 2, oreMax: 4, veinRespawn: 60,
@@ -221,16 +221,44 @@ export function rarityWeights(level, luckUpgrades, cap) {
   const s = w.reduce((a, b) => a + b, 0);
   return w.map(x => x / s);
 }
-/** Melhorias da forja (Oficina), compradas com o ouro do cofre. Valem para o time. */
+/** Oficina: melhorias individuais de cada mercador, pagas com o ouro do cofre. */
 export const FORGE = {
-  master: { name: 'Forja de mestre', desc: 'Libera a raridade Épica nas fabricações.', cost: 500 },
-  legend: { name: 'Forja lendária', desc: 'Libera a raridade Lendária nas fabricações.', cost: 1000, req: 'master' },
+  master: { name: 'Forja de mestre', desc: 'Libera a raridade Épica nas suas fabricações.', cost: 500 },
+  legend: { name: 'Forja lendária', desc: 'Libera a raridade Lendária nas suas fabricações.', cost: 1000, req: 'master' },
   luck1: { name: 'Sorte do ferreiro I', desc: 'Aumenta a chance de raridades melhores.', cost: 250 },
   luck2: { name: 'Sorte do ferreiro II', desc: 'Aumenta mais a chance de raridades melhores.', cost: 500, req: 'luck1' },
   luck3: { name: 'Sorte do ferreiro III', desc: 'Chance máxima de raridades melhores.', cost: 800, req: 'luck2' },
+  jeweler: { name: 'Ourives', desc: 'Aprimorar custa 30% menos energia e 1 minério a menos.', cost: 300 },
+  refine: { name: 'Refino', desc: 'A aba Aprimorar também sobe a raridade das peças (energia e 3 minérios).', cost: 600, req: 'jeweler' },
   shelf: { name: 'Expositores extras', desc: `+${STALL.shelf} espaços de exposição na banca.`, cost: 300 },
 };
 export const FORGE_KEYS = Object.keys(FORGE);
+export const freshForge = () => Object.fromEntries(FORGE_KEYS.map(k => [k, 0]));
+
+/** Reino: melhorias globais compradas pelo mercador com o ouro do cofre. Valem para todos os jogadores do time.
+ *  O preço sobe a cada nível: cost × growth^nível. */
+export const BOOSTS = {
+  hp: { name: 'Vigor', icon: '❤️', desc: '+6% de vida máxima', per: 0.06, fmt: (v) => `+${Math.round(v * 100)}% de vida` },
+  atk: { name: 'Força', icon: '⚔️', desc: '+5% de dano', per: 0.05, fmt: (v) => `+${Math.round(v * 100)}% de dano` },
+  armor: { name: 'Couraça', icon: '🛡️', desc: '+6 de armadura', per: 6, fmt: (v) => `+${v} de armadura` },
+  speed: { name: 'Agilidade', icon: '👟', desc: '+3% de velocidade de movimento', per: 0.03, fmt: (v) => `+${Math.round(v * 100)}% de velocidade` },
+};
+export const BOOST_KEYS = Object.keys(BOOSTS);
+export const BOOST_MAX = 5;
+export const BOOST_COST = { base: 150, growth: 1.6 };
+export function boostCost(level) { return level >= BOOST_MAX ? null : Math.round(BOOST_COST.base * Math.pow(BOOST_COST.growth, level) / 10) * 10; }
+
+// ------------------------------------------------------------------ consumíveis
+// Seringa: tira 1 nível de peso da sua princesa. O Ladino também pode contaminar um banquete com ela.
+// Bomba: só o Ladino compra; plantada numa torre inimiga, a destrói sozinha após o pavio.
+export const ITEMS = {
+  syringe: { name: 'Seringa', icon: '💉', price: 120, max: 2, craftEnergy: 20, craftOre: 2, dropChance: 0.15, useRange: 4 },
+  bomb: { name: 'Bomba', icon: '💣', price: 150, max: 1, plantTime: 1.5, fuse: 3, range: 4 },
+};
+/** Carroça do boticário: evento que deixa seringas perto das ruínas centrais. */
+export const APOTHECARY = { first: 75, every: 150, syringes: 2, life: 60 };
+/** Posto de suprimentos (skill 3 do Mercador). */
+export const SUPPLY = { energy: 30, duration: 25, radius: 7, regen: 5, armor: 15 };
 
 // ------------------------------------------------------------------ Invocador
 export const SUMMONER = {
@@ -247,12 +275,12 @@ export const WORKS = {
   barracks: { name: 'Quartel', desc: 'Tempo de renascimento −1 s por nível (de 7 s até 4 s).', costs: [[250, 20], [500, 35], [900, 50]] },
   ossuary: { name: 'Ossuário', desc: '+1 no limite de cada tipo de invocação do Invocador por nível.', costs: [[300, 25], [700, 45]] },
   banner: { name: 'Estandarte', desc: '+10% de XP para todo o time por nível.', costs: [[300, 20], [600, 35], [1000, 50]] },
-  towers: { name: 'Torres de defesa', desc: 'Nível 1: uma torre. Nível 2: duas torres. Nível 3: 25 de dano e 500 de vida.', costs: [[400, 30], [700, 45], [1100, 60]] },
+  towers: { name: 'Torres de defesa', desc: 'Torres do lado de fora do portão. Nível 1: uma torre. Nível 2: duas torres. Nível 3: 25 de dano e 500 de vida.', costs: [[400, 30], [700, 45], [1100, 60]] },
   treasury: { name: 'Tesouraria', desc: '+0,5 de ouro por segundo para cada jogador do time por nível.', costs: [[350, 25], [800, 45]] },
 };
 export const WORK_KEYS = Object.keys(WORKS);
 export const WORK_TIME = 20;
 export const TOWER = {
-  range: 22, interval: 1.5,
+  range: 24, interval: 1.5,
   levels: [null, { damage: 15, hp: 300 }, { damage: 15, hp: 300 }, { damage: 25, hp: 500 }],
 };

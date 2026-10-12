@@ -395,7 +395,8 @@ export class World {
       defendPoints: [v(0, z0 + 24), v(-10, z0 + 13), v(10, z0 + 13), v(3, z0 + 10), v(-32, z0), v(32, z0)],
       facing: team === TEAM.BLUE ? 0 : Math.PI, // yaw olhando para o inimigo
       stallPos: v(-16, z0 + 3),
-      towerSpots: [v(-9, z0 + 16), v(9, z0 + 16)],
+      // torres de defesa do lado de fora do portão, cobrindo a estrada de acesso
+      towerSpots: [v(-9, z0 + 33), v(9, z0 + 33)],
     };
     castle.inside = (x, z) => {
       const p = this.tp(team, x, z);

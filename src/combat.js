@@ -6,7 +6,7 @@ import { TEAM, DIFFICULTY, SETTINGS, SUMMONER, XP } from './config.js';
 import { heightAt } from './world.js';
 import { sfx } from './audio.js';
 import { skillList, cdOf, soulCost, energyCost, SKILL_BY_ID } from './skills.js';
-import { perkOf, cdMultiplier, addXp } from './progression.js';
+import { perkOf, cdMultiplier, energyMultiplier, addXp } from './progression.js';
 
 const _v = new THREE.Vector3();
 const _w = new THREE.Vector3();
@@ -371,12 +371,13 @@ export class Combat {
     if ((ch.cd[sk.id] || 0) > 0) return false;
     const souls = soulCost(sk, perk);
     if (souls && ch.souls < souls) return 'nosouls';
-    const energy = energyCost(sk, perk);
+    const energy = Math.round(energyCost(sk, perk) * energyMultiplier(ch, slot));
     if (energy && ch.energy < energy) return 'noenergy';
     if (sk.menu) return { menu: sk.menu, skill: sk, perk };
     const r = sk.cast(this, ch, aim, perk);
     if (r === false) return false;
     if (souls) ch.souls -= souls;
+    if (energy) ch.energy = Math.max(0, ch.energy - energy);
     ch.cd[sk.id] = cdOf(sk, perk) * cdMultiplier(ch, slot);
     if (sk.dmg !== '—' && !sk.keepsVeil) ch.breakInvis();
     return true;
@@ -385,7 +386,7 @@ export class Combat {
   /** Paga custo e recarga de uma skill de menu (chamado quando a ação do menu é confirmada). */
   commitSkill(ch, sk, { energy = true } = {}) {
     const perk = perkOf(ch, sk);
-    if (energy) { const e = energyCost(sk, perk); if (e) ch.energy -= e; }
+    if (energy) { const e = Math.round(energyCost(sk, perk) * energyMultiplier(ch, sk.slot)); if (e) ch.energy -= e; }
     const s = soulCost(sk, perk);
     if (s) ch.souls -= s;
     ch.cd[sk.id] = cdOf(sk, perk) * cdMultiplier(ch, sk.slot);
@@ -495,7 +496,7 @@ export class Combat {
     if (source && !raw) {
       if ((source.isBot || source.isMonster || source.isStructure) && target.isPlayer && !(source.summon && source.summon.owner.isPlayer)) dmg *= this.diff.botDamage;
       if (source.cls && !source.isMonster) {
-        let k = 1 + source.rarityDmg();
+        let k = 1 + source.rarityDmg() + source.teamBoost('atk') + (source.supplyDmg || 0);
         if (t < source.st.dmgUpUntil) k += 0.15;
         if (t < source.st.furyUntil && source.st.furyPerk === 'A') k += 0.35;
         if (source.classKey === 'swordsman' && st.bleed && t < st.bleed.until && this.perkFor(source, 'sword_bleed') === 'B') k += 0.25;
@@ -568,7 +569,8 @@ export class Combat {
       if (leech > 0) source.hp = Math.min(source.maxHp, source.hp + dmg * leech);
     }
     if (dir && knock && !target.isStructure && t >= st.knockImmuneUntil) { target.vel.x += dir.x * knock; target.vel.z += dir.z * knock; }
-    if (target.channel) g.economy.cancelChannel(target, true);
+    // tiros de torre não interrompem quem planta a bomba (só golpes de personagens)
+    if (target.channel && !(target.channel.kind === 'bomb' && source && source.isStructure)) g.economy.cancelChannel(target, true);
     if (!dot) {
       if (target.isMonster) g.effects.bones(target.chest);
       else if (target.isStructure) g.effects.sparks(target.chest, 0xc8b089, 6, 4);
